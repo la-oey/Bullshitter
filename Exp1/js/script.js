@@ -7,8 +7,8 @@ var expt = {
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
     liarType: 'NA', //liarTypes: {'blatant','conditional','honest'}
     detectorType: 'NA', //detectorTypes: {'clairvoyant','gullible','random','weighted'}
-    allLiarTypes: ['conditional'],
-    allDetectorTypes: ['random','weighted'],
+    allLiarTypes: ['sly'],
+    allDetectorTypes: ['weighted'],
     acrossTrialProb: 0.5,
     playerTotalScore: 0,
     oppTotalScore: 0,
@@ -22,6 +22,8 @@ var trial = {
     trialNumber: 0,
     startTime: 0,
     trialTime: 0,
+    waitTime: 0,
+    timer: 0,
     probabilityRed: 0.5,
     probabilityBlue: 0.5,
     numRed: 0,
@@ -57,8 +59,8 @@ function clickInstructions() {
     document.getElementById('instructions').style.display = 'none';
     expt.liarType = sample(expt.allLiarTypes);
     expt.detectorType = sample(expt.allDetectorTypes);
-    console.log('liar type: ' + expt.liarType);
-    console.log('detector type: ' + expt.detectorType);
+    //console.log('liar type: ' + expt.liarType);
+    //console.log('detector type: ' + expt.detectorType);
 
     if(expt.roleFirst == 'bullshitter'){
         bullshitter();
@@ -76,7 +78,7 @@ function fillUrn(totalMarbles, probability) {
         } else{
             trial.numBlue += 1;
         }
-        marble("#urnsvg", color, 20, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
+        marble("#urnsvg", color, 17.5, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
 
         // hide urn if in the bullshitDetector role
         // if(trial.roleCurrent == 'bullshitter'){
@@ -97,7 +99,7 @@ function draw(){
     } else{
         trial.drawnBlue += 1;
     }
-    marble("#tubesvg", color, 20, .5*$('#tube').width(), ($('#tube').height()*.95)-(turn.numDrawn/expt.marblesSampled)*$('#tube').height())
+    marble("#tubesvg", color, 17.5, .5*$('#tube').width(), ($('#tube').height()*.95)-(turn.numDrawn/expt.marblesSampled)*$('#tube').height())
 
     turn.numDrawn += 1;
 
@@ -105,8 +107,25 @@ function draw(){
         $('#draw-button').prop('disabled',true);
         $('#subjResponse').css('opacity','1');
         $('#reportMarbles').prop('disabled',false);
-        $('#trialInstruct').html("Type into the textbox a number <b>between 0 and 10</b>. Then, click 'Next!'");
+        $('#trialInstruct').html("Type into the textbox a number <b>between 0 and 10</b>. Then, click 'Report!'<br><br>");
     } 
+}
+
+function report(){
+    $('#report-button').prop('disabled', true);
+
+    function bullshitterWait() {
+        flickerWait();
+        
+        trial.waitTime = 1000 + 5000*exponential(0.9);
+        setTimeout(function(){
+            clearInterval(trial.timer);
+            $('#subjResponse').html("<p><br>Your opponent made a decision. Click 'Next!' to continue.<br><br></p>")
+            $('#subjResponse').css('opacity','1');
+            $('#next').prop('disabled',false);
+        }, trial.waitTime);
+    }
+    bullshitterWait();
 }
 
 function computerDraw(liarType){
@@ -121,11 +140,13 @@ function computerDraw(liarType){
 
     if(liarType == 'blatant'){
         trial.reportedDrawn = expt.marblesSampled;
-    } else if(liarType == 'conditional'){
-        if(trial.drawnRed < 5){
-            trial.reportedDrawn = 5;
-        } else{
+    } else if(liarType == 'sly'){
+        var rand = Math.random();
+        var lie = getK(expt.marblesSampled, expt.acrossTrialProb, rand);
+        if(lie <= trial.drawnRed){
             trial.reportedDrawn = trial.drawnRed;
+        } else{
+            trial.reportedDrawn = lie;
         }
     } else if(liarType == 'honest'){
         trial.reportedDrawn = trial.drawnRed;
@@ -172,7 +193,12 @@ function computerBSDetector(detectorType){
 
 function restartTrial(){
     document.getElementById('trial').style.display = 'block';
-    $('.trialNum').html("Round " + (trial.trialNumber+1));
+    if(trial.roleCurrent == "bullshitter"){
+        var roletxt = "marble-drawer"
+    } else{
+        var roletxt = "responder"
+    }
+    $('.trialNum').html("Round " + (trial.trialNumber+1) + ": You are the <i>" + roletxt + "</i>");
     $('#urnsvg').empty();
     $('#tubesvg').empty();
 
@@ -198,55 +224,58 @@ function restartTrial(){
 function bullshitter() {
     restartTrial();
 
-    $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.")
-    $('#subjResponse').html('<label><br><br><br>Say how many red marbles you want your opponent to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2"/>');
+    $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.<br>Here's how points work: each red marble is 1 point for you; each blue marble is 1 point for your opponent.")
+    $('#subjResponse').html('<label><br><br><br>Say how many <b style="color:red">red</b> marbles you want your opponent to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2"/> <button class="active-button" id="report-button" type="button" onclick="report();">Report!</button><br>');
     $('#urnsvg').css('background-color','white');
     $('#tubesvg').css('background-color','white');
     $('#draw-button').prop('disabled',false);
     $('#buttonResponse').css('opacity','0');
-
+    $('#report-button').prop('disabled',true);
     $('input[type=text]').on('input',
         function(){
             trial.reportedDrawn = parseInt($(this).val());
             if(trial.reportedDrawn >= 0 && trial.reportedDrawn <= 10 ){
-                $('#next').prop('disabled',false);
+                $('#report-button').prop('disabled',false);
             } else{
-                $('#next').prop('disabled',true);
+                $('#report-button').prop('disabled',true);
             }
     });
     
 }
 
+function flickerWait(){
+    var op = 0.1;
+        var increment = 0.1;
+        $('#subjResponse').html('<p><br>Waiting for your opponent...<br><br></p>');
+        $('#subjResponse').css('opacity','0');
+    trial.timer = setInterval(go, 50)
+    function go(){
+        op += increment;
+        $('#subjResponse').css('opacity', op);
+        if(op >= 1){
+            increment = -increment;
+        }
+        if(op <= 0){
+            increment = -increment;
+        }
+    }
+}
+
 function bullshitDetector() {
     restartTrial();
 
-    $('#trialInstruct').html("It's your opponent's turn to sample marbles.")
+    $('#trialInstruct').html("It's your opponent's turn to sample marbles.<br><br>")
     //$('#urnsvg').css('background-color','purple');
     $('#tubesvg').css('background-color','purple');
     $('#draw-button').prop('disabled',true);
 
-    function flickerWait() {
-        var op = 0.1;
-        var increment = 0.1;
-        $('#subjResponse').html('<p>Waiting for your opponent...<br></p>');
-        $('#subjResponse').css('opacity','0');
-
-        var timer = setInterval(go, 50)
-
-        function go(){
-            op += increment;
-            $('#subjResponse').css('opacity', op);
-            if(op >= 1){
-                increment = -increment;
-            }
-            if(op <= 0){
-                increment = -increment;
-            }
-        }
-
+    function bullshitDetectWait() {
+        flickerWait();
+        
+        trial.waitTime = 5000 + 10000*exponential(0.9);
         setTimeout(function(){
-            clearInterval(timer);
-            $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'");
+            clearInterval(trial.timer);
+            $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each red marble is 1 point for you; each blue marble is 1 point for your opponent.");
             $('#subjResponse').html('<p>Your partner said they drew <b id="reportMarbles"/> red marbles.<br><br>Your partner will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
             computerDraw(expt.liarType);
             $('#reportMarbles').html(trial.reportedDrawn);
@@ -254,9 +283,9 @@ function bullshitDetector() {
             $('#yourPoints').html(expt.marblesSampled - trial.reportedDrawn);
             $('#subjResponse').css('opacity','1');
             $('#buttonResponse').css('opacity','1');
-        }, 3000)
+        }, trial.waitTime);
     }
-    flickerWait();
+    bullshitDetectWait();
 }
 
 function toScoreboard(){
@@ -376,6 +405,7 @@ function recordData(){
         oppTotalScore: expt.oppTrialScore,
         compLiarType: expt.liarType,
         compDetectorType: expt.detectorType,
+        waitTime: trial.waitTime,
         trialTime: trial.trialTime
     })
 }
@@ -404,6 +434,18 @@ function cbinom(n, p, k){
     } else{
         return binom(n, p, k) + cbinom(n, p, k-1);
     }
+}
+
+function getK(n, p, r){
+    var i = 0;
+    while(r > cbinom(n, p, i)){
+        i += 1;
+    }
+    return i;
+}
+
+function exponential(lambda){
+    return lambda * Math.E ** (-lambda*Math.random())
 }
 
 

@@ -32,7 +32,7 @@ TODO:
         making.
         You have been asked to participate because you are an undergraduate here at UCSD. <br><br>
         <b>PROCEDURES.</b> If you agree to participate in this study, the following will happen to you:<br></p>
-    <p style="margin-left: 150px; margin-right: 150px">
+    <p style="margin-left: 15%; margin-right: 15%">
         1. You will sit at the computer and play a game.<br>
         2. Try to get the highest score you can.<br><br>
     </p>
@@ -60,7 +60,7 @@ TODO:
     </p>
 
 
-    <button class="big-button" onclick="clickConsent();"> Click here to consent and agree to participate</button>
+    <button class="big-button active-button" onclick="clickConsent();"> Click here to consent and agree to participate</button>
 </div>
 
 <div id="instructions" class="screen">
@@ -69,16 +69,20 @@ TODO:
     </p>
     <div>
     	<p>You and your opponent are racing to be the first to get to <b id="instructGoalScore"></b> points. <br><br>
-    	You will take turns drawing <b id="instructMarblesSampled"></b> marbles from the box and responding. <b>Each red marble is 1 point for the marble-drawer and each blue marble is 1 point for the responder.</b> Only the marble-drawer sees how many marbles were drawn. The marble-drawer reports how many <b>red</b> marbles they <i>want the responder opponent to think</i> they drew.</p>
-    	<p class="indent">E.g. 6 red marbles = marble-drawer: 6 pts; responder: 4pts.</p>
-    	<p><b>Critically, the marble-drawer doesn't necessarily need to tell the truth ;).</b> However, the responder can call out the marble-drawer as lying by rejecting how many marbles they claimed they drew. If the marble-drawer is called out as lying and they were telling the truth, they get the number of points for how many red marbles they claimed they drew and the responder gets the <b>negative of those points</b>.</p>
-    	<p class="indent">E.g. Marble-drawer was telling the truth: 6 red marbles = marble-drawer: 6 pts; responder: -6 pts</p>
-    	<p>Vice versa, if the marble-drawer was in fact lying, the responder gets the points for the red marbles, and the marble-drawer get the <b>negative of those points</b>.</p>
-    	<p class="indent">E.g. Marble-drawer was lying: 6 red marbles = marble-drawer: -6 pts; responder: 6 pts</p>
+    	You will take turns: On each turn, on person will draw <b id="instructMarblesSampled"></b> marbles, and report which marbles were drawn. Then, the other person will respond by saying whether they think the marble-drawer was LYING, or telling the truth.<br><br>
+        Here's how the points work:
+        <p class="indent">Each <b style="color:red">red</b> marble is 1 point for the marble-drawer.</p>
+        <p class="indent">Each <b style="color:blue">blue</b> marble is 1 point for the responder.</p>
+        <p>Only the marble-drawer will see the marbles that were actually drawn. So, the marble-drawer doesn't neccessarily need to tell the truth ;).<br><br>
+        But be careful! If the responder DETECTS a lie, they can call out the marble-drawer as lying. If the marble-drawer was in fact lying, the responder gets the points for the number of red marbles reported, and the marble-drawer gets points <i>taken away</i> -- they <i>lose</i> a point for each red marble reported.</p>
+        <p class="indent">E.g. Marble-drawer was lying: marble-drawer: -6 pts; responder: +6 pts</p>
+        <p>If the marble-drawer is called out as lying but they were really telling the truth, the marble-drawer gains the points for the red marbles (as usual), but the responder loses a point for each red marble.</p>
+    	<p class="indent">E.g. Marble-drawer was telling the truth: marble-drawer: +6 pts; responder: -6 pts</p>
+    	
     	<p>This is what a round looks like:</p>
     </div>
-    <center><img src="img/instructTrial.png"></center><br>
-    <button class="big-button" id="continueLead" onclick="clickInstructions();">Click here to continue</button>
+    <center><img src="img/instructTrial.png" width="80%"></center><br>
+    <button class="big-button active-button" id="continueLead" onclick="clickInstructions();">Click here to continue</button>
 </div>
 
 
@@ -91,7 +95,7 @@ TODO:
         </div>
         <div id="tube">
             <svg id="tubesvg"></svg>
-            <button id="draw-button" type="button" onclick="draw();">Draw Marble</button>
+            <button class="active-button" id="draw-button" type="button" onclick="draw();">Draw Marble</button>
         </div>
     </div>
 
@@ -103,7 +107,7 @@ TODO:
         </div>
     </center>
     <br><br><br>
-    <button class="big-button" id="next" type="button" onclick="toScoreboard();">Next!</button>
+    <button class="big-button active-button" id="next" type="button" onclick="toScoreboard();">Next!</button>
 </div>
 
 <div id="scoreboard" class="screen">
@@ -116,14 +120,14 @@ TODO:
 	    <div class="scoreCol">Opponent's Score:<br><b id="oppScore">0</b></div>
  	</div>
 	<br><br><br><br><br>
-    <button class="big-button" id="nextScoreboard" type="button" onclick="trialDone();">Next!</button>
+    <button class="big-button active-button" id="nextScoreboard" type="button" onclick="trialDone();">Next!</button>
 </div>
 
 
 <div id="completed" class="screen">
     <p class="mtitle" id="whowon"></p>
     <p class="mtitle">Thank you for your participation!</p>
-    <button class="big-button" id="finished" onclick="experimentDone();">Finished!</button>
+    <button class="big-button active-button" id="finished" onclick="experimentDone();">Finished!</button>
 </div>
 
 </body>

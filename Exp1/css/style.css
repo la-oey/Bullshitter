@@ -73,7 +73,7 @@ ul {
 }
 
 .indent {
-    margin: -0.5em 15% -0.5em 15%;
+    margin: 0em 15% 0em 15%;
 }
 
 #subsetInstr {
@@ -140,43 +140,36 @@ body {
     margin-top: 1%;
     width: 50%;
     padding: 10px 32px;
-    border: 2px solid #4CAF50;
-    background-color: white;
-    color: black;
     text-align: center;
     text-decoration: none;
-    display: inline-block;
     font-size: 1.25em;
     font-family: "Helvetica", sans-serif;
 
 }
 
-.big-button:hover {
+.active-button {
+    border: 2px solid #4CAF50;
+    background-color: white;
+    color: black;
+    display: inline-block;
+}
+
+.active-button:hover {
     background-color: #4CAF50;
     color: white;
 }
 
-.big-button:disabled {
+.active-button:disabled {
     background-color: #555555;
     color: white;
 }
 
 #draw-button {
     padding: 5px;
-    border: 2px solid #4CAF50;
-    background-color: white;
-    color: black;
-    display: inline-block;
 }
 
-#draw-button:hover {
-    background-color: #4CAF50;
-    color: white;
-}
-
-#draw-button:disabled {
-    background-color: #555555;
-    color: white;
+#report-button {
+    padding: 3px;
 }
 
 
@@ -185,7 +178,7 @@ body {
     border: 2px solid black;
     margin-left: 15%;
     width: 60%;
-    height: 420px;
+    height: 365px;
 }
 
 #urnsvg {
@@ -201,7 +194,7 @@ body {
     border-width: 0 2px 2px 2px;
     margin-right: 10%;
     width: 5%;
-    height: 420px;
+    height: 365px;
 }
 
 #tubesvg {
