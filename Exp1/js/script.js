@@ -1,8 +1,8 @@
 // https://ucsd.sona-systems.com/webstudy_credit.aspx?experiment_id=1465&credit_token=c6393dd431374ab48035c7fafafced2e&survey_code=XXXX
 // experiment settings
 var expt = {
-    //trials: 4, //remove set number of trials?
-    goalScore: 100,
+    trials: 40, 
+    //goalScore: 100,
     marblesSampled: 10, //total number of marbles drawn per trial
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
     liarType: 'NA', //liarTypes: {'blatant','conditional','honest'}
@@ -51,7 +51,8 @@ function pageLoad() {
 function clickConsent() {
     document.getElementById('consent').style.display = 'none';
     document.getElementById('instructions').style.display = 'block';
-    $('#instructGoalScore').html(expt.goalScore);
+    //$('#instructGoalScore').html(expt.goalScore);
+    $('#instructRounds').html(expt.trials);
     $('#instructMarblesSampled').html(expt.marblesSampled);
 }
 
@@ -346,11 +347,11 @@ function toScoreboard(){
 function trialDone() {
     // hide trial.
     document.getElementById('scoreboard').style.display = 'none';
-    trial.trialNumber += 1;
     trial.trialTime = Date.now() - trial.startTime;
     recordData();
 
-    if(expt.playerTotalScore >= expt.goalScore || expt.oppTotalScore >= expt.goalScore){
+    //if(expt.playerTotalScore >= expt.goalScore || expt.oppTotalScore >= expt.goalScore){
+    if(trial.trialNumber >= expt.trials){
         if(expt.playerTotalScore == expt.oppTotalScore){
             $('#whowon').html("You and your opponent tied!");
         } else if(expt.playerTotalScore > expt.oppTotalScore){
@@ -364,6 +365,7 @@ function trialDone() {
 
         document.getElementById('completed').style.display = 'block';
     } else {
+        trial.trialNumber += 1;
         if(trial.roleCurrent == 'bullshitter'){
             computerBSDetector(expt.detectorType);
             trial.roleCurrent = 'bullshitDetector';
