@@ -1,20 +1,17 @@
 // https://ucsd.sona-systems.com/webstudy_credit.aspx?experiment_id=1465&credit_token=c6393dd431374ab48035c7fafafced2e&survey_code=XXXX
 // experiment settings
 var expt = {
+    saveURL: 'submit.simple.php',
     trials: 40, 
     //goalScore: 100,
     marblesSampled: 10, //total number of marbles drawn per trial
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
-    liarType: 'NA', //liarTypes: {'blatant','conditional','honest'}
-    detectorType: 'NA', //detectorTypes: {'clairvoyant','gullible','random','weighted'}
-    allLiarTypes: ['sly'],
-    allDetectorTypes: ['weighted'],
     acrossTrialProb: 0.5,
     playerTotalScore: 0,
     oppTotalScore: 0,
     sona: {
-        experiment_id: 1465,
-        credit_token: 'c6393dd431374ab48035c7fafafced2e'
+        experiment_id: 1505,
+        credit_token: 'b20092f9d3b34a378ee654bcc50710ea'
     }
 };
 var trial = {
@@ -23,6 +20,8 @@ var trial = {
     startTime: 0,
     trialTime: 0,
     waitTime: 0,
+    responseStartTime: 0,
+    responseTime: 0,
     timer: 0,
     probabilityRed: 0.5,
     probabilityBlue: 0.5,
@@ -31,6 +30,8 @@ var trial = {
     drawnRed: 0,
     drawnBlue: 0,
     reportedDrawn: 0,
+    compLie: 0,
+    compDetect: 0,
     callBS: false,
     playerTrialScore: 0,
     oppTrialScore: 0
@@ -58,10 +59,6 @@ function clickConsent() {
 
 function clickInstructions() {
     document.getElementById('instructions').style.display = 'none';
-    expt.liarType = sample(expt.allLiarTypes);
-    expt.detectorType = sample(expt.allDetectorTypes);
-    //console.log('liar type: ' + expt.liarType);
-    //console.log('detector type: ' + expt.detectorType);
 
     if(expt.roleFirst == 'bullshitter'){
         bullshitter();
@@ -109,10 +106,12 @@ function draw(){
         $('#subjResponse').css('opacity','1');
         $('#reportMarbles').prop('disabled',false);
         $('#trialInstruct').html("Type into the textbox a number <b>between 0 and 10</b>. Then, click 'Report!'<br><br>");
+        trial.responseStartTime = Date.now();
     } 
 }
 
 function report(){
+    trial.responseTime = Date.now() - trial.responseStartTime;
     $('#report-button').prop('disabled', true);
 
     function bullshitterWait() {
@@ -129,7 +128,7 @@ function report(){
     bullshitterWait();
 }
 
-function computerDraw(liarType){
+function computerDraw(){
     //groundTruth
     for(var i=0; i<expt.marblesSampled; i++){
         if(Math.random() < trial.probabilityRed){
@@ -139,23 +138,19 @@ function computerDraw(liarType){
         }
     }
 
-    if(liarType == 'blatant'){
-        trial.reportedDrawn = expt.marblesSampled;
-    } else if(liarType == 'sly'){
-        var rand = Math.random();
-        var lie = getK(expt.marblesSampled, expt.acrossTrialProb, rand);
-        if(lie <= trial.drawnRed){
-            trial.reportedDrawn = trial.drawnRed;
-        } else{
-            trial.reportedDrawn = lie;
-        }
-    } else if(liarType == 'honest'){
+    var rand = Math.random();
+    var lie = getK(expt.marblesSampled, expt.acrossTrialProb, rand);
+    trial.compLie = lie;
+    trial.compDetect = -1;
+    if(lie <= trial.drawnRed){
         trial.reportedDrawn = trial.drawnRed;
-    } 
-    
+    } else{
+        trial.reportedDrawn = lie;
+    }
 }
 
 function callout(call){
+    trial.responseTime = Date.now() - trial.responseStartTime;
     $('.callout-button').prop('disabled', true);
     if(call == 'accept'){
         $('#accept-button').css('opacity','1');
@@ -169,26 +164,12 @@ function callout(call){
     $('#next').prop('disabled',false);
 }
 
-function computerBSDetector(detectorType){
+function computerBSDetector(){
     trial.callBS = false;
-    
-    if(detectorType == 'clairvoyant'){
-        if(trial.reportedDrawn != trial.drawnRed){
-            trial.callBS = true;
-        }
-    } else if(detectorType == 'gullible'){
-        //never calls B.S.
-    } else if(detectorType == 'random'){
-        if(Math.random() < .05){
-            trial.callBS = true;
-        }
-    } else if(detectorType == 'weighted'){
-        if(trial.reportedDrawn > (expt.marblesSampled / 2)){
-            //kind of random equation, but results in reportedDrawn of 1 to be called with 75% probability
-            if(Math.random() < (cbinom(expt.marblesSampled, expt.acrossTrialProb, trial.reportedDrawn)-.5)**2 * 3){
-                trial.callBS = true;
-            }
-        }
+    trial.compDetect = cbinom(expt.marblesSampled, expt.acrossTrialProb, trial.reportedDrawn) - (cbinom(expt.marblesSampled, expt.acrossTrialProb, (expt.marblesSampled/2)) - 0.5) //lowers prob of celling out by centering cbinom at 0.5 for 5 marbles drawn
+    trial.compLie = -1;
+    if(Math.random() < trial.compDetect){
+        trial.callBS = true;
     }
 }
 
@@ -277,13 +258,14 @@ function bullshitDetector() {
         setTimeout(function(){
             clearInterval(trial.timer);
             $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each red marble is 1 point for you; each blue marble is 1 point for your opponent.");
-            $('#subjResponse').html('<p>Your partner said they drew <b id="reportMarbles"/> red marbles.<br><br>Your partner will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
-            computerDraw(expt.liarType);
+            $('#subjResponse').html('<p>Your opponent said they drew <b id="reportMarbles"/> red marbles.<br><br>Your opponent will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
+            computerDraw();
             $('#reportMarbles').html(trial.reportedDrawn);
             $('#oppPoints').html(trial.reportedDrawn);
             $('#yourPoints').html(expt.marblesSampled - trial.reportedDrawn);
             $('#subjResponse').css('opacity','1');
             $('#buttonResponse').css('opacity','1');
+            trial.responseStartTime = Date.now();
         }, trial.waitTime);
     }
     bullshitDetectWait();
@@ -294,7 +276,7 @@ function toScoreboard(){
     document.getElementById('scoreboard').style.display = 'block';
 
     if(trial.roleCurrent == 'bullshitter'){
-        computerBSDetector(expt.detectorType);
+        computerBSDetector();
     }
 
     if(!trial.callBS){
@@ -324,11 +306,11 @@ function toScoreboard(){
             $('#calledBS').html("You <b>rejected</b> your opponent's reported answer. ");
             //if player catches a liar
             if(trial.reportedDrawn != trial.drawnRed){
-                $('#calledBS').append("Your partner was lying.");
+                $('#calledBS').append("Your opponent was lying.");
                 trial.playerTrialScore = trial.reportedDrawn;
                 trial.oppTrialScore = -trial.reportedDrawn;
             } else{
-                $('#calledBS').append("Your partner was telling the truth.");
+                $('#calledBS').append("Your opponent was telling the truth.");
                 trial.oppTrialScore = trial.reportedDrawn;
                 trial.playerTrialScore = -trial.reportedDrawn;
             }
@@ -348,6 +330,7 @@ function trialDone() {
     // hide trial.
     document.getElementById('scoreboard').style.display = 'none';
     trial.trialTime = Date.now() - trial.startTime;
+    trial.trialNumber += 1;
     recordData();
 
     //if(expt.playerTotalScore >= expt.goalScore || expt.oppTotalScore >= expt.goalScore){
@@ -365,9 +348,7 @@ function trialDone() {
 
         document.getElementById('completed').style.display = 'block';
     } else {
-        trial.trialNumber += 1;
         if(trial.roleCurrent == 'bullshitter'){
-            computerBSDetector(expt.detectorType);
             trial.roleCurrent = 'bullshitDetector';
             bullshitDetector();
         } else{
@@ -395,19 +376,19 @@ function recordData(){
     trialData.push({
         trialNumber: trial.trialNumber,
         roleCurrent: trial.roleCurrent,
-        goalScore: expt.goalScore,
         marblesSampled: expt.marblesSampled,
         probabilityRed: trial.probabilityRed,
         drawnRed: trial.drawnRed,
         reportedDrawn: trial.reportedDrawn,
+        compLie: trial.compLie,
+        compDetect: trial.compDetect,
         callBS: trial.callBS,
         playerTrialScore: trial.playerTrialScore,
         oppTrialScore: trial.oppTrialScore,
         playerTotalScore: expt.playerTotalScore,
-        oppTotalScore: expt.oppTrialScore,
-        compLiarType: expt.liarType,
-        compDetectorType: expt.detectorType,
+        oppTotalScore: expt.oppTotalScore,
         waitTime: trial.waitTime,
+        responseTime: trial.responseTime,
         trialTime: trial.trialTime
     })
 }
