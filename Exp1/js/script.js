@@ -68,14 +68,30 @@ function clickInstructions() {
 }
 
 function fillUrn(totalMarbles, probability) {
+    var exactRed = Math.round(totalMarbles * probability);
+    var exactBlue = totalMarbles - exactRed;
+
     for(var i=0; i<totalMarbles; i++){
         var color = "blue";
-        if(Math.random() < probability){
-            color = "red";
+
+        // samples balls in urn from underlying distribution (probability)
+        // if(Math.random() < probability){
+        //     color = "red";
+        //     trial.numRed += 1;
+        // } else{
+        //     trial.numBlue += 1;
+        // }
+
+        // balls in urn correspond to exact probability distribution, i.e. no random sampling
+        if(Math.random() < (exactRed/(exactRed + exactBlue))){
+            color = "red"
             trial.numRed += 1;
+            exactRed -= 1;
         } else{
             trial.numBlue += 1;
+            exactBlue -= 1;
         }
+
         marble("#urnsvg", color, 17.5, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
 
         // hide urn if in the bullshitDetector role
