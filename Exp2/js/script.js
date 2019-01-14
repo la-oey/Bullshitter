@@ -209,7 +209,7 @@ function restartTrial(){
     trial.numBlue = 0;
     trial.drawnRed = 0;
     trial.drawnBlue = 0;
-    fillUrn(1000,trial.probabilityRed);
+    fillUrn(400,trial.probabilityRed);
     
     $('#subjResponse').css('opacity','0');
     $('.callout-button').css('opacity','0.8');
