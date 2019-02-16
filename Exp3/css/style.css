@@ -245,7 +245,7 @@ body {
     margin-left: 20%;
 }
 
-#scoreboardDiv {
+.scoreboardDiv {
   margin-left: 25%;
   margin-right: 25%;
   padding: 40px;
@@ -256,6 +256,13 @@ body {
   float: left;
   font-size: 24px;
   text-align: center;
+}
+
+#statsBox {
+    margin-left: 25%;
+    margin-right: 25%;
+    padding: 10px;
+    border: 5px solid black;
 }
 
 

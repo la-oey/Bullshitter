@@ -2,16 +2,30 @@
 // experiment settings
 var expt = {
     saveURL: 'submit.simple.php',
-    trials: 40, 
-    practiceTrials: 4, //how many practice trials
+    trials: 8, //switch to 80
+    practiceTrials: 0, //how many practice trials //switch to 4
     //goalScore: 100,
     marblesSampled: 10, //total number of marbles drawn per trial
     roles: ['bullshitter', 'bullshitDetector'],
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
     allTrialProbs: [0.2,0.5,0.8],
     trialProbs: 0,
-    playerTotalScore: 0,
-    oppTotalScore: 0,
+    stat: {
+        playerTotalScore: 0,
+        oppTotalScore: 0,
+        truth: 0,
+        truth_noBS: 0,
+        truth_BS: 0,
+        lie: 0,
+        lie_noBS: 0,
+        lie_BS: 0,
+        noBS: 0,
+        noBS_truth: 0,
+        noBS_lie: 0,
+        BS: 0,
+        BS_truth: 0,
+        BS_lie: 0
+    },
     sona: {
         experiment_id: 1505,
         credit_token: 'b20092f9d3b34a378ee654bcc50710ea'
@@ -83,6 +97,7 @@ function clickPostPractice(){
     document.getElementById('postPractice').style.display = 'none';
 
     expt.roleFirst = sample(expt.roles);
+    trial.roleCurrent = expt.roleFirst;
     if(expt.roleFirst == 'bullshitter'){
         bullshitter();
     } else{
@@ -173,7 +188,7 @@ function computerDraw(){
     var lie = getK(expt.marblesSampled, trial.probabilityRed, rand);
     trial.compLie = lie;
     trial.compDetect = -1;
-    console.log("CompLie: " + trial.compLie)
+    //console.log("CompLie: " + trial.compLie)
     if(lie <= trial.drawnRed){
         trial.reportedDrawn = trial.drawnRed;
     } else{
@@ -200,7 +215,7 @@ function computerBSDetector(){
     trial.callBS = false;
     trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled/2)) - 0.5) //lowers prob of celling out by centering cbinom at 0.5 for 5 marbles drawn
     trial.compLie = -1;
-    console.log("CompDetect: " + trial.compDetect)
+    //console.log("CompDetect: " + trial.compDetect)
     if(Math.random() < trial.compDetect){
         trial.callBS = true;
     }
@@ -228,6 +243,7 @@ function restartTrial(){
     $('#subjResponse').css('opacity','0');
     $('.callout-button').css('opacity','0.8');
     $('.callout-button').prop('disabled', false);
+    $('#buttonResponse').css('opacity','0');
     turn.numDrawn = 0;
     $('input[type=text]').val("");
     $('#reportMarbles').prop('disabled',true);
@@ -240,11 +256,10 @@ function bullshitter() {
     restartTrial();
 
     $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.<br>Here's how points work: each red marble is 1 point for you; each blue marble is 1 point for your opponent.")
-    $('#subjResponse').html('<label><br><br><br>Say how many <b style="color:red">red</b> marbles you want your opponent to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2"/> <button class="active-button" id="report-button" type="button" onclick="report();">Report!</button><br>');
+    $('#subjResponse').html('<label><br><br><br>Say how many <b style="color:red">red</b> marbles you want your opponent to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/> <button class="active-button" id="report-button" type="button" onclick="report();">Report!</button><br>');
     $('#urnsvg').css('background-color','white');
     $('#tubesvg').css('background-color','white');
     $('#draw-button').prop('disabled',false);
-    $('#buttonResponse').css('opacity','0');
     $('#report-button').prop('disabled',true);
     $('input[type=text]').on('input',
         function(){
@@ -317,53 +332,74 @@ function toScoreboard(){
             trial.callBStxt = "Your opponent <b>accepted</b> your reported answer.";
             trial.playerTrialScore = trial.reportedDrawn;
             trial.oppTrialScore = expt.marblesSampled - trial.reportedDrawn;
+            if(trial.reportedDrawn == trial.drawnRed){
+                expt.stat.truth += 1;
+                expt.stat.truth_noBS += 1;
+            } else{
+                expt.stat.lie += 1;
+                expt.stat.lie_noBS += 1;
+            }
         } else{
             trial.callBStxt = "You <b>accepted</b> your opponent's reported answer.";
+            expt.stat.noBS += 1;
             trial.oppTrialScore = trial.reportedDrawn;
             trial.playerTrialScore = expt.marblesSampled - trial.reportedDrawn;
+            if(trial.reportedDrawn == trial.drawnRed){
+                expt.stat.noBS_truth += 1;
+            } else{
+                expt.stat.noBS_lie += 1;
+            }
         }
     } else{
+        
         if(trial.roleCurrent == 'bullshitter'){
             trial.callBStxt = "Your opponent <b>rejected</b> your reported answer. ";
             //if player is telling the truth
             if(trial.reportedDrawn == trial.drawnRed){
                 trial.callBStxt = trial.callBStxt + "You were telling the truth.";
+                expt.stat.truth += 1;
+                expt.stat.truth_BS += 1;
                 trial.playerTrialScore = trial.reportedDrawn; //player gets points as reported
                 trial.oppTrialScore = -trial.reportedDrawn; //opponent gets negative of points reported
             } else{
                 trial.callBStxt = trial.callBStxt + "You were lying.";
+                expt.stat.lie += 1;
+                expt.stat.lie_BS += 1;
                 trial.oppTrialScore = trial.reportedDrawn; //opponent gets points as reported
                 trial.playerTrialScore = -trial.reportedDrawn; //player gets negative of points reported
             }
         } else{
             trial.callBStxt = "You <b>rejected</b> your opponent's reported answer. ";
+            expt.stat.BS += 1;
             //if player catches a liar
-            if(trial.reportedDrawn != trial.drawnRed){
-                trial.callBStxt = trial.callBStxt + "Your opponent was lying.";
-                trial.playerTrialScore = trial.reportedDrawn;
-                trial.oppTrialScore = -trial.reportedDrawn;
-            } else{
+            if(trial.reportedDrawn == trial.drawnRed){
                 trial.callBStxt = trial.callBStxt + "Your opponent was telling the truth.";
+                expt.stat.BS_truth += 1;
                 trial.oppTrialScore = trial.reportedDrawn;
                 trial.playerTrialScore = -trial.reportedDrawn;
+            } else{
+                trial.callBStxt = trial.callBStxt + "Your opponent was lying.";
+                expt.stat.BS_lie += 1;
+                trial.playerTrialScore = trial.reportedDrawn;
+                trial.oppTrialScore = -trial.reportedDrawn;
             }
         }
     }
 
-    expt.playerTotalScore += trial.playerTrialScore;
-    expt.oppTotalScore += trial.oppTrialScore;
+    expt.stat.playerTotalScore += trial.playerTrialScore;
+    expt.stat.oppTotalScore += trial.oppTrialScore;
 
     if(trial.exptPart == "practice"){
         $('#calledBS').html(trial.callBStxt);
         $('#playerPts').html(trial.playerTrialScore);
         $('#oppPts').html(trial.oppTrialScore);
-        $('#playerScore').html(expt.playerTotalScore);
-        $('#oppScore').html(expt.oppTotalScore);
+        $('.playerScore').html(expt.stat.playerTotalScore);
+        $('.oppScore').html(expt.stat.oppTotalScore);
     } else{
         $('.scoreReport').html("Click to move on to the next round.");
         $('#calledBS').hide();
         $('h2').hide();
-        $('#scoreboardDiv').hide();
+        $('.scoreboardDiv').hide();
     }
 }
 
@@ -376,18 +412,50 @@ function trialDone() {
 
     if(trial.exptPart == "practice" & trial.trialNumber >= expt.practiceTrials){
         trial.trialNumber = 0;
-        trial.roleCurrent = expt.roleFirst;
         trial.exptPart = 'trial';
+        expt.stat.playerTotalScore = 0;
+        expt.stat.oppTotalScore = 0;
+        expt.stat.truth = 0;
+        expt.stat.truth_noBS = 0;
+        expt.stat.truth_BS = 0;
+        expt.stat.lie = 0;
+        expt.stat.lie_noBS = 0;
+        expt.stat.lie_BS = 0;
+        expt.stat.noBS = 0;
+        expt.stat.noBS_truth = 0;
+        expt.stat.noBS_lie = 0;
+        expt.stat.BS = 0;
+        expt.stat.BS_truth = 0;
+        expt.stat.BS_lie = 0;
         document.getElementById('trial').style.display = 'none';
         document.getElementById('postPractice').style.display = 'block';
     } else if(trial.trialNumber >= expt.trials){
-        if(expt.playerTotalScore == expt.oppTotalScore){
+        if(expt.stat.playerTotalScore == expt.stat.oppTotalScore){
             $('#whowon').html("You and your opponent tied!");
-        } else if(expt.playerTotalScore > expt.oppTotalScore){
+        } else if(expt.stat.playerTotalScore > expt.stat.oppTotalScore){
             $('#whowon').html("You won!");
         } else{
             $('#whowon').html("Your opponent won!");
         }
+
+        $('.scoreboardDiv').show();
+
+        $('.playerScore').html(expt.stat.playerTotalScore);
+        $('.oppScore').html(expt.stat.oppTotalScore);
+
+        calculateStats('#stat_truth', expt.stat.truth, expt.stat.truth + expt.stat.lie);
+        calculateStats('#stat_truth_noBS', expt.stat.truth_noBS, expt.stat.truth);
+        calculateStats('#stat_truth_BS', expt.stat.truth_BS, expt.stat.truth);
+        calculateStats('#stat_lie', expt.stat.lie, expt.stat.truth + expt.stat.lie);
+        calculateStats('#stat_lie_noBS', expt.stat.lie_noBS, expt.stat.lie);
+        calculateStats('#stat_lie_BS', expt.stat.lie_BS, expt.stat.lie);
+        calculateStats('#stat_noBS', expt.stat.noBS, expt.stat.noBS + expt.stat.BS);
+        calculateStats('#stat_noBS_truth', expt.stat.noBS_truth, expt.stat.noBS);
+        calculateStats('#stat_noBS_lie', expt.stat.noBS_lie, expt.stat.noBS);
+        calculateStats('#stat_BS', expt.stat.BS, expt.stat.noBS + expt.stat.BS);
+        calculateStats('#stat_BS_truth', expt.stat.BS_truth, expt.stat.BS);
+        calculateStats('#stat_BS_lie', expt.stat.BS_lie, expt.stat.BS);
+
         // expt done
         data = {client: client, expt: expt, trials: trialData};
         writeServer(data);
@@ -432,8 +500,8 @@ function recordData(){
         callBS: trial.callBS,
         playerTrialScore: trial.playerTrialScore,
         oppTrialScore: trial.oppTrialScore,
-        playerTotalScore: expt.playerTotalScore,
-        oppTotalScore: expt.oppTotalScore,
+        playerTotalScore: expt.stat.playerTotalScore,
+        oppTotalScore: expt.stat.oppTotalScore,
         waitTime: trial.waitTime,
         responseTime: trial.responseTime,
         trialTime: trial.trialTime
@@ -476,6 +544,14 @@ function getK(n, p, r){
 
 function exponential(lambda){
     return lambda * Math.E ** (-lambda*Math.random())
+}
+
+function calculateStats(string, numer, denom){
+    if(denom == 0){
+        $(string).html("N/A");
+    } else{
+        $(string).html(Math.round(numer * 100 / denom)+"%");
+    }
 }
 
 

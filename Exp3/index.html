@@ -132,9 +132,9 @@ TODO:
 	<p class="scoreReport" id="calledBS"></p>
 	<p class="scoreReport" id="pointsRewarded">You get <b id="playerPts"></b> points and your opponent gets <b id="oppPts"></b> points.</p><br><br><br>
 	<center><h2>Scoreboard</h2></center>
-	<div id="scoreboardDiv">
-	    <div class="scoreCol">Your Score:<br><b id="playerScore">0</b></div>
-	    <div class="scoreCol">Opponent's Score:<br><b id="oppScore">0</b></div>
+	<div class="scoreboardDiv">
+	    <div class="scoreCol">Your Score:<br><b class="playerScore">0</b></div>
+	    <div class="scoreCol">Opponent's Score:<br><b class="oppScore">0</b></div>
  	</div>
 	<br><br><br><br><br>
     <button class="big-button active-button" id="nextScoreboard" type="button" onclick="trialDone();">Next!</button>
@@ -142,7 +142,45 @@ TODO:
 
 
 <div id="completed" class="screen">
+    <center><h1>Scoreboard</h1></center>
+    <div class="scoreboardDiv">
+        <div class="scoreCol">Your Score:<br><b class="playerScore">0</b></div>
+        <div class="scoreCol">Opponent's Score:<br><b class="oppScore">0</b></div>
+    </div>
     <p class="mtitle" id="whowon"></p>
+    <div id="statsBox">
+        <center><h3>Your Stats</h3></center>
+        <p> 
+            You told the true: <b id="stat_truth"></b>
+        </p><br>
+        <p class="indent">
+            Your opponent accepted your reported value: <b id="stat_truth_noBS"></b><br>
+            Your opponent called BS, but you told the truth: <b id="stat_truth_BS"></b>
+        </p>
+        <p>
+            You lied: <b id="stat_lie"></b>
+        </p><br>
+        <p class="indent">
+            Your opponent accepted, but you lied: <b id="stat_lie_noBS"></b><br>
+            Your opponent caught you lying: <b id="stat_lie_BS"></b>
+        </p>
+        <br><br>
+        <p> 
+            You accepted your opponent's report: <b id="stat_noBS"></b>
+        </p><br>
+        <p class="indent">
+            You accepted and your opponent told the truth: <b id="stat_noBS_truth"></b><br>
+            You accepted and your opponent lied: <b id="stat_noBS_lie"></b>
+        </p>
+        <p>
+            You called BS: <b id="stat_BS"></b>
+        </p><br>
+        <p class="indent">
+            You called BS, but your opponent told the truth: <b id="stat_BS_truth"></b><br>
+            You called BS, and your opponent lied: <b id="stat_BS_lie"></b>
+        </p>
+
+    </div>
     <p class="mtitle">Thank you for your participation!</p>
     <button class="big-button active-button" id="finished" onclick="experimentDone();">Finished!</button>
 </div>
