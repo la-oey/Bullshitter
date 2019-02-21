@@ -241,8 +241,14 @@ body {
     background-color: red;
 }
 
+#catchQ {
+    margin-left: 25%;
+}
+
 .scoreReport {
     margin-left: 20%;
+    margin-right: 20%;
+    font-size: 20px;
 }
 
 .scoreboardDiv {
@@ -254,8 +260,12 @@ body {
 .scoreCol {
   width: 50%;
   float: left;
-  font-size: 24px;
+  font-size: 28px;
   text-align: center;
+}
+
+.totalScores {
+    font-size: 40px;
 }
 
 #statsBox {
