@@ -331,11 +331,20 @@ function bullshitDetector() {
 function submitCatch(){
     trial.catch.responseTime = Date.now() - trial.catch.responseStartTime;
     $('#catch-button').prop('disabled', true);
+    var timeoutTime = 0;
     if(trial.catch.key == trial.catch.response){
-        $('#catchQ').append('<img src="img/yup.png" height=16 vertical-align="middle" hspace="20">');
+        $('#catchQ').append('<img src="img/yup.png" height=18 vertical-align="middle" hspace="20">');
     } else{
-        $('#catchQ').append('<img src="img/nah.png" height=16 vertical-align="middle" hspace="20">');
+        $('#catchQ').append('<img src="img/nah.png" height=18 vertical-align="middle" hspace="20">');
+        timeoutTime = 3000;
     }
+    setTimeout(function(){
+        if(trial.exptPart == 'practice'){
+            $('.scoreReport').css('opacity','1');
+            $('.scoreboardDiv').css('opacity','1');
+        }
+        $('#nextScoreboard').css('opacity','1');
+    }, timeoutTime);
 }
 
 function catchTrial(role, exptPart){
@@ -360,8 +369,10 @@ function catchTrial(role, exptPart){
     });
 
     if(exptPart == 'practice'){
-
+        $('.scoreReport').css('opacity','0');
+        $('.scoreboardDiv').css('opacity','0');
     }
+    $('#nextScoreboard').css('opacity','0');
 }
 
 function toScoreboard(){
