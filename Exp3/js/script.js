@@ -2,14 +2,15 @@
 // experiment settings
 var expt = {
     saveURL: 'submit.simple.php',
-    trials: 8, //switch to 80
-    practiceTrials: 2, //how many practice trials //switch to 4
+    trials: 80, //switch to 80
+    practiceTrials: 4, //how many practice trials //switch to 4
     //goalScore: 100,
     marblesSampled: 10, //total number of marbles drawn per trial
     roles: ['bullshitter', 'bullshitDetector'],
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
     allTrialProbs: [0.2,0.5,0.8],
     trialProbs: 0,
+    catchTrials: [],
     stat: {
         playerTotalScore: 0,
         oppTotalScore: 0,
@@ -53,6 +54,7 @@ var trial = {
     callBS: false,
     callBStxt: '',
     catch: {
+        question: '',
         response: 0,
         key: 0,
         responseStartTime: 0,
@@ -91,7 +93,7 @@ function clickInstructions() {
 
 function clickPrePractice(){
     document.getElementById('prePractice').style.display = 'none';
-
+    expt.catchTrials = distributeChecks(expt.practiceTrials, 0.50); // 0.5 of practice trials have an attention check
     if(expt.roleFirst == 'bullshitter'){
         bullshitter();
     } else{
@@ -102,6 +104,7 @@ function clickPrePractice(){
 function clickPostPractice(){
     document.getElementById('postPractice').style.display = 'none';
 
+    expt.catchTrials = distributeChecks(expt.trials, 0.10); // 0.1 of expt trials have an attention check
     expt.roleFirst = sample(expt.roles);
     trial.roleCurrent = expt.roleFirst;
     if(expt.roleFirst == 'bullshitter'){
@@ -257,6 +260,8 @@ function restartTrial(){
 
     trial.catch.key = -1;
     trial.catch.response = -1;
+    trial.catch.responseTime = -1;
+    $('#catchQ').hide();
 
     trial.startTime = Date.now();
 }
@@ -349,12 +354,13 @@ function submitCatch(){
 
 function catchTrial(role, exptPart){
     if(role == 'bullshitter'){
-        $('#catchQ').html('<label>How many marbles did you actually draw?</label>');
+        trial.catch.question = 'How many marbles did you actually draw?'
         trial.catch.key = trial.drawnRed;
     } else{
-        $('#catchQ').html('<label>How many marbles did your opponent report drawing?</label>');
+        trial.catch.question = 'How many marbles did your opponent report drawing?'
         trial.catch.key = trial.reportedDrawn;
     }
+    $('#catchQ').html('<label>'+trial.catch.question+'</label>');
     $('#catchQ').append('<input type="text" id="reportCatch" value="" size="2" maxlength="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/> <button class="active-button" id="catch-button" type="button" onclick="submitCatch();">Submit</button> ');
 
     $('#catch-button').prop('disabled',true);
@@ -380,7 +386,10 @@ function toScoreboard(){
     document.getElementById('scoreboard').style.display = 'block';
 
     trial.catch.responseStartTime = Date.now();
-    catchTrial(trial.roleCurrent, trial.exptPart);
+    if(expt.catchTrials.includes(trial.trialNumber)){
+        $('#catchQ').show();
+        catchTrial(trial.roleCurrent, trial.exptPart);
+    }
 
     if(trial.roleCurrent == 'bullshitter'){
         computerBSDetector();
@@ -388,7 +397,7 @@ function toScoreboard(){
 
     if(!trial.callBS){
         if(trial.roleCurrent == 'bullshitter'){
-            trial.callBStxt = "Your opponent <b>accepted</b> your reported answer.<br><br>";
+            trial.callBStxt = "Your opponent <b style='color:green'>accepted</b> your reported answer.<br><br>";
             trial.playerTrialScore = trial.reportedDrawn;
             trial.oppTrialScore = expt.marblesSampled - trial.reportedDrawn;
             if(trial.reportedDrawn == trial.drawnRed){
@@ -401,7 +410,7 @@ function toScoreboard(){
                 expt.stat.lie_noBS += 1;
             }
         } else{
-            trial.callBStxt = "You <b>accepted</b> your opponent's reported answer.<br><br>";
+            trial.callBStxt = "You <b style='color:green'>accepted</b> your opponent's reported answer.<br><br>";
             expt.stat.noBS += 1;
             trial.oppTrialScore = trial.reportedDrawn;
             trial.playerTrialScore = expt.marblesSampled - trial.reportedDrawn;
@@ -415,7 +424,7 @@ function toScoreboard(){
         }
     } else{
         if(trial.roleCurrent == 'bullshitter'){
-            trial.callBStxt = "Your opponent <b>rejected</b> your reported answer.<br><br>";
+            trial.callBStxt = "Your opponent <b style='color:red'>rejected</b> your reported answer.<br><br>";
             //if player is telling the truth
             if(trial.reportedDrawn == trial.drawnRed){
                 trial.callBStxt = trial.callBStxt + "You were <b>telling the truth</b>.<br><br>";
@@ -432,7 +441,7 @@ function toScoreboard(){
                 trial.oppTrialScore = 5; //opponent gets +5 points
             }
         } else{
-            trial.callBStxt = "You <b>rejected</b> your opponent's reported answer.<br><br>";
+            trial.callBStxt = "You <b style='color:red'>rejected</b> your opponent's reported answer.<br><br>";
             expt.stat.BS += 1;
             //if player catches a liar
             if(trial.reportedDrawn == trial.drawnRed){
@@ -568,6 +577,7 @@ function recordData(){
         oppTotalScore: expt.stat.oppTotalScore,
         waitTime: trial.waitTime,
         responseTime: trial.responseTime,
+        catchQuestion: trial.catch.question,
         catchKey: trial.catch.key,
         catchResponse: trial.catch.response,
         catchResponseTime: trial.catch.responseTime,
@@ -627,6 +637,15 @@ function scorePrefix(score){
     } else{
         return("+" + score);
     }
+}
+
+function distributeChecks(totalTrials, freq){
+    var round = Math.floor(totalTrials * freq);
+    var checkRounds = [];
+    for(var i=0; i<totalTrials/round; i++){
+        checkRounds.push(round*i + Math.floor(randomDouble(0,round)));
+    }
+    return(checkRounds);
 }
 
 
