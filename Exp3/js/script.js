@@ -335,6 +335,8 @@ function bullshitDetector() {
 
 function submitCatch(){
     trial.catch.responseTime = Date.now() - trial.catch.responseStartTime;
+    $('input[type=text]').prop('disabled',true);
+    $('input[type=text]').css('opacity','0.7');
     $('#catch-button').prop('disabled', true);
     var timeoutTime = 0;
     if(trial.catch.key == trial.catch.response){
@@ -344,20 +346,20 @@ function submitCatch(){
         timeoutTime = 3000;
     }
     setTimeout(function(){
-        if(trial.exptPart == 'practice'){
-            $('.scoreReport').css('opacity','1');
+        if(trial.exptPart == 'practice' | (trial.trialNumber + 1) % 5 == 0){
             $('.scoreboardDiv').css('opacity','1');
-        }
+        } 
+        $('.scoreReport').css('opacity','1');
         $('#nextScoreboard').css('opacity','1');
     }, timeoutTime);
 }
 
 function catchTrial(role, exptPart){
     if(role == 'bullshitter'){
-        trial.catch.question = 'How many marbles did you actually draw?'
+        trial.catch.question = 'How many red marbles did you actually draw?'
         trial.catch.key = trial.drawnRed;
     } else{
-        trial.catch.question = 'How many marbles did your opponent report drawing?'
+        trial.catch.question = 'How many red marbles did your opponent report drawing?'
         trial.catch.key = trial.reportedDrawn;
     }
     $('#catchQ').html('<label>'+trial.catch.question+'</label>');
@@ -374,10 +376,8 @@ function catchTrial(role, exptPart){
             }
     });
 
-    if(exptPart == 'practice'){
-        $('.scoreReport').css('opacity','0');
-        $('.scoreboardDiv').css('opacity','0');
-    }
+    $('.scoreReport').css('opacity','0');
+    $('.scoreboardDiv').css('opacity','0');
     $('#nextScoreboard').css('opacity','0');
 }
 
@@ -389,6 +389,10 @@ function toScoreboard(){
     if(expt.catchTrials.includes(trial.trialNumber)){
         $('#catchQ').show();
         catchTrial(trial.roleCurrent, trial.exptPart);
+    } else if(trial.exptPart == 'trial' & (trial.trialNumber + 1) % 5 != 0){
+        $('#totalScoreboardDiv').css('opacity','0');
+    } else{
+        $('#totalScoreboardDiv').css('opacity','1');
     }
 
     if(trial.roleCurrent == 'bullshitter'){
@@ -460,19 +464,18 @@ function toScoreboard(){
 
     expt.stat.playerTotalScore += trial.playerTrialScore;
     expt.stat.oppTotalScore += trial.oppTrialScore;
+    $('.playerScore').html(expt.stat.playerTotalScore);
+    $('.oppScore').html(expt.stat.oppTotalScore);
 
     if(trial.exptPart == "practice"){
         $('#calledBS').html(trial.callBStxt);
         $('#playerPts').html(scorePrefix(trial.playerTrialScore));
         $('#oppPts').html(scorePrefix(trial.oppTrialScore));
-        $('.playerScore').html(expt.stat.playerTotalScore);
-        $('.oppScore').html(expt.stat.oppTotalScore);
         //$('.playerScore').html((expt.stat.playerTotalScore - trial.playerTrialScore) + " + " + trial.playerTrialScore + " = " + expt.stat.playerTotalScore);
         //$('.oppScore').html((expt.stat.oppTotalScore - trial.oppTrialScore) + " + " + trial.oppTrialScore + " = " + expt.stat.oppTotalScore);
     } else{
         $('.scoreReport').html("Click to move on to the next round.");
-        $('#calledBS').hide();
-        $('.scoreboardDiv').hide();
+        $('#trialScoreboardDiv').hide();
     }
 }
 

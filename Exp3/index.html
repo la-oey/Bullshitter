@@ -69,14 +69,14 @@ TODO:
     </p>
     <div>
     	<p>Your goal is to <b>beat your opponent into the ground by winning by the highest point differential possible</b>. <br><br>
-    	You will take turns: On each turn, on person will draw <b id="instructMarblesSampled"></b> marbles, and report which marbles were drawn. Then, the other person will respond by saying whether they think the marble-drawer was LYING, or telling the truth.<br><br>
+    	You will take turns: On each turn, one person will draw <b id="instructMarblesSampled"></b> marbles, and report which marbles were drawn. Then, the other person will respond by saying whether they think the marble-drawer was LYING, or telling the truth.<br><br>
         Here's how the points work:
         <p class="indent">Each <b style="color:red">red</b> marble is 1 point for the marble-drawer.</p>
         <p class="indent">Each <b style="color:blue">blue</b> marble is 1 point for the responder.</p>
         <p>Only the marble-drawer will see the marbles that were actually drawn. So, the marble-drawer doesn't neccessarily need to tell the truth ;).<br><br>
         But be careful! If the responder DETECTS a lie, they can call out the marble-drawer as lying. If the marble-drawer was in fact lying, the responder gets +5 points, and the marble-drawer gets -5 points.</p>
         <p class="indent">E.g. Marble-drawer was lying: marble-drawer: -5 pts; responder: +5 pts</p>
-        <p>If the marble-drawer is called out as lying but they were really telling the truth, the marble-drawer gains the points for the red marbles (as usual), and the responder gains the points fo the blue marbles, except with a -5 penalty.</p>
+        <p>If the marble-drawer is called out as lying but they were really telling the truth, the marble-drawer gains the points for the red marbles (as usual), and the responder gains the points for the blue marbles, except with a -5 penalty.</p>
     	<p class="indent">E.g. Marble-drawer was telling the truth: marble-drawer: +6 pts; responder: 4 - 5 = -1 pt</p>
         <p>Throughout the experiment, you will randomly be asked questions about the task. If you get the question correct, you will be able to move on. If not, you will have to wait 3 seconds before being able to move on.</p>
     	
@@ -99,7 +99,7 @@ TODO:
         Nice job! You're ready to move on to the experiment.
     </p>
     <div>
-       <p>Next, you and your opponent will play <b id="instructRounds"></b> rounds. Unlike in the practice trials, you won't receive feedback or your score until the very end of the experiment. Good luck!</p>
+       <p>Next, you and your opponent will play <b id="instructRounds"></b> rounds. Unlike in the practice trials, you will only see your score every fifth trial until the very end of the experiment. Good luck!</p>
     </div>
     <button class="big-button active-button" id="continueLead" onclick="clickPostPractice();">Click here to continue</button>
 </div>
@@ -132,12 +132,15 @@ TODO:
 	<p class="mtitle trialNum">Round</p><br>
     <div id="catchQ"></div><br>
 	<p class="scoreReport" id="calledBS"></p>
-	<!-- <p class="scoreReport" id="pointsRewarded">You get <b id="playerPts"></b> points and your opponent gets <b id="oppPts"></b> points.</p><br><br><br> -->
-	
-	<div class="scoreboardDiv">
+
+    <div class="scoreboardDiv" id="trialScoreboardDiv">
+        <div class="scoreCol"><b id="playerPts"></b></div>
+        <div class="scoreCol"><b id="oppPts"></b></div>
+    </div>
+	<div class="scoreboardDiv" id="totalScoreboardDiv">
         <center><h2>Scoreboard</h2></center>
-	    <div class="scoreCol"><b id="playerPts"></b><br><br>Your Score:<br><b class="totalScores playerScore">0</b></div>
-	    <div class="scoreCol"><b id="oppPts"></b><br><br>Opponent's Score:<br><b class="totalScores oppScore">0</b></div>
+	    <div class="scoreCol">Your Score:<br><b class="totalScores playerScore">0</b></div>
+	    <div class="scoreCol">Opponent's Score:<br><b class="totalScores oppScore">0</b></div>
  	</div>
 	<br><br><br><br><br>
     <button class="big-button active-button" id="nextScoreboard" type="button" onclick="trialDone();">Next!</button>
