@@ -1,0 +1,194 @@
+<!--
+TODO:
+1. get images of products
+2. make product list correct
+3. randomize product list
+4. make the actual content of the experiment not filler.
+5. make it less ugly.
+ -->
+
+<!DOCTYPE html>
+<html>
+<html lang="en-US">
+<meta charset="UTF-8">
+<head>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script type="text/javascript" src='js/client.js'></script>
+    <script type="text/javascript" src='js/dataio.js'></script>
+    <script type="text/javascript" src='js/script.js'></script>
+
+
+</head>
+
+
+<body onload="pageLoad();">
+
+<div id="consent" class="screen">
+    <h1 class="mtitle">University of California, San Diego<br>
+        Consent to act as a research subject</h1>
+    <p> Edward Vul, Ph.D. is conducting a research study to find out more about decision
+        making.
+        You have been asked to participate because you are an undergraduate here at UCSD. <br><br>
+        <b>PROCEDURES.</b> If you agree to participate in this study, the following will happen to you:<br></p>
+    <p style="margin-left: 15%; margin-right: 15%">
+        1. You will sit at the computer and play a game.<br>
+        2. Try to get the highest score you can.<br><br>
+    </p>
+    <p>
+        <b>RISKS</b>. No potential risks or discomforts are anticipated except for the possibility that some tasks may
+        be slightly boring.<br><br>
+        <b>PAYMENT/REMUNERATION</b>. In consideration of your time and inconvenience, you will receive 1 hour of course
+        credit. The procedures and length of participation will last approximately one hour.<br><br>
+        <b>RIGHTS.</b> You may call the UCSD Human Research Protection Program at 858-657-5100 to ask about your rights
+        as a research subject or to report research-related problems.<br><br>
+        <b>BENEFITS</b>. There will be no direct benefit to you from these procedures. However, the investigator may
+        learn more about basic questions pertaining to memory, perception, cognition, and learning. This knowledge may
+        have benefits to society in fields ranging from education to design of airplane cockpits, but these benefits
+        will be indirect.<br><br>
+        <b>EXPLANATION.</b> The researcher has explained this study to you and answered your questions. If you have
+        questions or research related problems, you may reach Edward Vul at 858-534-4401.<br><br>
+        <b>VOLUNTARY NATURE OF PARTICIPATION.</b> Participation in research is entirely voluntary. You may refuse to
+        participate or withdraw at any time without penalty.<br><br>
+        <b>CONFIDENTIALITY.</b> Research records will be kept confidential to the extent allowed by law. As with all
+        research, there is also the possibility of loss of confidentiality. Information from participants will be
+        identified by a study number. The database which relates the study number to a specific subject will be
+        maintained in the study coordinators office.<br><br>
+        <b>COPY OF CONSENT.</b> You have received a copy of this consent document to keep and a copy of the Experimental
+        Bill of Rights.
+    </p>
+
+
+    <button class="big-button active-button" onclick="clickConsent();"> Click here to consent and agree to participate</button>
+</div>
+
+<div id="instructions" class="screen">
+    <p class="mtitle">
+        Instructions for the game. Please read carefully.
+    </p>
+    <div>
+    	<p>Your goal is to <b>beat your opponent into the ground by winning by the highest point differential possible</b>. <br><br>
+    	You will take turns: On each turn, one person will draw <b id="instructMarblesSampled"></b> marbles, and report which marbles were drawn. Then, the other person will respond by saying whether they think the marble-drawer was LYING, or telling the truth.<br><br>
+        Here's how the points work:
+        <p class="indent">Each <b style="color:red">red</b> marble is 1 point for the marble-drawer.</p>
+        <p class="indent">Each <b style="color:blue">blue</b> marble is 1 point for the responder.</p>
+        <p>Only the marble-drawer will see the marbles that were actually drawn. So, the marble-drawer doesn't neccessarily need to tell the truth ;).<br><br>
+        But be careful! If the responder DETECTS a lie, they can call out the marble-drawer as lying. If the marble-drawer was in fact lying, the responder gets +5 points, and the marble-drawer gets -5 points.</p>
+        <p class="indent">E.g. Marble-drawer was lying: marble-drawer: -5 pts; responder: +5 pts</p>
+        <p>If the marble-drawer is called out as lying but they were really telling the truth, the marble-drawer gains the points for the red marbles (as usual), and the responder gains the points for the blue marbles, except with a -5 penalty.</p>
+    	<p class="indent">E.g. Marble-drawer was telling the truth: marble-drawer: +6 pts; responder: 4 - 5 = -1 pt</p>
+        <p>Throughout the experiment, you will randomly be asked questions about the task. If you get the question correct, you will be able to move on. If not, you will have to wait 3 seconds before being able to move on.</p>
+    	
+    	<p>This is what a round looks like:</p>
+    </div>
+    <center><img src="img/exp3_instructTrial_5.png" width="80%"></center><br>
+    <button class="big-button active-button" id="continueLead" onclick="clickInstructions();">Click here to continue</button>
+</div>
+
+
+<div id="prePractice" class="screen">
+    <p class="mtitle">
+        First, you'll have <b id="instructPractice"></b> practice rounds.
+    </p>
+    <button class="big-button active-button" id="continueLead" onclick="clickPrePractice();">Click here to continue</button>
+</div>
+
+<div id="postPractice" class="screen">
+    <p class="mtitle">
+        Nice job! You're ready to move on to the experiment.
+    </p>
+    <div>
+       <p>Next, you and your opponent will play <b id="instructRounds"></b> rounds. Unlike in the practice trials, you will only see your score every fifth trial until the very end of the experiment. Good luck!</p>
+    </div>
+    <button class="big-button active-button" id="continueLead" onclick="clickPostPractice();">Click here to continue</button>
+</div>
+
+<div id="trial" class="screen">
+    <p class="mtitle trialNum">Round</p>
+    <center><div id="trialInstruct"></div><br></center>
+    <div id="wrapper">
+        <div id="urn">
+            <svg id="urnsvg"></svg>
+        </div>
+        <div id="tube">
+            <svg id="tubesvg"></svg>
+            <button class="active-button" id="draw-button" type="button" onclick="draw();">Draw Marble</button>
+        </div>
+    </div>
+
+    <center><br><br>
+        <div id="subjResponse"></div>
+        <div id="buttonResponse">
+        	<button class="callout-button" id="accept-button" type="button" onclick="callout('accept');"><b>Accept</b></button>
+        	<button class="callout-button" id="reject-button" type="button" onclick="callout('reject');"><b>Reject</b></button>
+        </div>
+    </center>
+    <br><br><br>
+    <button class="big-button active-button" id="next" type="button" onclick="toScoreboard();">Next!</button>
+</div>
+
+<div id="scoreboard" class="screen">
+	<p class="mtitle trialNum">Round</p><br>
+    <div id="catchQ"></div><br>
+	<p class="scoreReport" id="calledBS"></p>
+
+    <div class="scoreboardDiv" id="trialScoreboardDiv">
+        <div class="scoreCol"><b id="playerPts"></b></div>
+        <div class="scoreCol"><b id="oppPts"></b></div>
+    </div>
+	<div class="scoreboardDiv" id="totalScoreboardDiv">
+        <center><h2>Scoreboard</h2></center>
+	    <div class="scoreCol">Your Score:<br><b class="totalScores playerScore">0</b></div>
+	    <div class="scoreCol">Opponent's Score:<br><b class="totalScores oppScore">0</b></div>
+ 	</div>
+	<br><br><br><br><br>
+    <button class="big-button active-button" id="nextScoreboard" type="button" onclick="trialDone();">Next!</button>
+</div>
+
+
+<div id="completed" class="screen">
+    <center><h1>Scoreboard</h1></center>
+    <div class="scoreboardDiv">
+        <div class="scoreCol">Your Score:<br><b class="playerScore">0</b></div>
+        <div class="scoreCol">Opponent's Score:<br><b class="oppScore">0</b></div>
+    </div>
+    <p class="mtitle" id="whowon"></p>
+    <div id="statsBox">
+        <center><h3>Your Stats</h3></center>
+        <p> 
+            You told the true: <b id="stat_truth"></b>
+        </p><br>
+        <p class="indent">
+            Your opponent accepted your reported value: <b id="stat_truth_noBS"></b><br>
+            Your opponent called BS, but you told the truth: <b id="stat_truth_BS"></b><br>
+        </p>
+        <p>
+            You lied: <b id="stat_lie"></b>
+        </p><br>
+        <p class="indent">
+            Your opponent accepted, but you lied: <b id="stat_lie_noBS"></b><br>
+            Your opponent caught you lying: <b id="stat_lie_BS"></b><br>
+        </p>
+        <br><br>
+        <p> 
+            You accepted your opponent's report: <b id="stat_noBS"></b>
+        </p><br>
+        <p class="indent">
+            You accepted and your opponent told the truth: <b id="stat_noBS_truth"></b><br>
+            You accepted and your opponent lied: <b id="stat_noBS_lie"></b><br>
+        </p>
+        <p>
+            You called BS: <b id="stat_BS"></b>
+        </p><br>
+        <p class="indent">
+            You called BS, but your opponent told the truth: <b id="stat_BS_truth"></b><br>
+            You called BS, and your opponent lied: <b id="stat_BS_lie"></b><br>
+        </p>
+
+    </div>
+    <p class="mtitle">Thank you for your participation!</p>
+    <button class="big-button active-button" id="finished" onclick="experimentDone();">Finished!</button>
+</div>
+
+</body>
