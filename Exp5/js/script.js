@@ -258,7 +258,9 @@ function callout(call){
 
 function computerBSDetector(){
     trial.callBS = false;
-    trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled/2)) - 0.5) //lowers prob of celling out by centering cbinom at 0.5 for 5 marbles drawn
+    trial.compDetect = 1- cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
+    console.log(trial.probabilityRed)
+    console.log(trial.compDetect)
     trial.compLie = -1;
     //console.log("CompDetect: " + trial.compDetect)
     if(Math.random() < trial.compDetect){
