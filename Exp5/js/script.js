@@ -365,8 +365,8 @@ function bullshitDetector() {
             $('#subjResponse').html('<p>Your opponent said they drew <b id="reportMarbles"/> red marbles.<br><br>Your opponent will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
             computerDraw();
             $('#reportMarbles').html(trial.reportedDrawn);
-            $('#oppPoints').html(trial.reportedDrawn);
-            $('#yourPoints').html(expt.marblesSampled - trial.reportedDrawn);
+            $('#oppPoints').html(expt.marblesSampled - trial.reportedDrawn);
+            $('#yourPoints').html(trial.reportedDrawn);
             $('#subjResponse').css('opacity','1');
             $('#buttonResponse').css('opacity','1');
             trial.responseStartTime = Date.now();
