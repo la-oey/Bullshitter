@@ -1,0 +1,281 @@
+---
+title: "Bullshitter AI"
+author: "Lauren Oey"
+date: "11/29/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+
+probs <- data.frame(real=rep(c(0:10), 11), reported=rep(c(0:10), each=11))
+reported <- 0:10
+drawer <- data.frame(reported = reported,
+                     role = "Liar",
+                     utilDiffAccept.truth = reported - (10-reported),
+                     utilDiffAccept.lie = reported - (10-reported),
+                     utilDiffReject.truth = 2*reported,
+                     utilDiffReject.lie = -2*reported)
+responder <- data.frame(reported = reported,
+                        role = "Detector",
+                        utilDiffAccept.truth = (10-reported) - reported,
+                        utilDiffAccept.lie = (10-reported) - reported,
+                        utilDiffReject.truth = -2*reported,
+                        utilDiffReject.lie = 2*reported)
+utils <- rbind(drawer,responder)
+```
+
+```{r}
+utils %>%
+  gather("outcome", "utility", 3:6) %>%
+  ggplot(aes(x=reported, y=utility, colour=outcome)) +
+  geom_line(stat="identity") +
+  scale_x_continuous("Reported Value", breaks=pretty(reported, n=10)) +
+  scale_y_continuous("Relative Utility") +
+  scale_colour_manual("Response", labels=c("accept (lie)", "accept (reject)", "reject (lie)", "reject (truth)"), values=c("lightgreen", "darkgreen", "deepskyblue4", "deepskyblue")) +
+  ggtitle("Utility Differential of Reported Score by Role") +
+  facet_wrap(~ role) +
+  theme_bw()
+```
+
+```{r}
+outcome.names <- c(
+  "utilDiffAccept.truth" = "Don't Call BS (truth)",
+  "utilDiffAccept.lie" = "Don't Call BS (lie)",
+  "utilDiffReject.truth" = "Call BS (truth)",
+  "utilDiffReject.lie" = "Call BS (lie)"
+)
+
+
+utils %>%
+  gather("outcome", "utility", 3:6) %>%
+  mutate(outcome = factor(outcome, levels = c("utilDiffAccept.truth", "utilDiffAccept.lie", "utilDiffReject.truth", "utilDiffReject.lie"))) %>%
+  ggplot(aes(x=reported, y=utility, colour=role)) +
+  geom_line(stat="identity") +
+  scale_x_continuous("Reported Value (w')", breaks=pretty(reported, n=10)) +
+  scale_y_continuous("Relative Utility") +
+  scale_colour_discrete("Role") +
+  facet_wrap(~outcome, labeller = as_labeller(outcome.names)) +
+  theme_bw()
+
+ggsave("img/utility_outcome.png")
+```
+
+```{r}
+probs$binom <- dbinom(probs$reported, 10, 0.5)
+probs %>%
+  select("reported","binom") %>%
+  unique() %>%
+  ggplot(aes(x=reported, y=binom)) +
+  geom_density(stat="identity") +
+  ggtitle("dbinom(i, 10, 0.5)")
+```
+
+```{r}
+probs$cbinom <- pbinom(probs$reported, 10, 0.5)
+
+dumb_detect <- data.frame(reported=rep(0:10,3), 
+                          p.world.text=c(rep("P(w) = 0.2",11), 
+                                         rep("P(w) = 0.5",11), 
+                                         rep("P(w) = 0.8",11)),
+                          cbinom=c(pbinom(0:10, 10, 0.2), 
+                                   pbinom(0:10, 10, 0.5), 
+                                   pbinom(0:10, 10, 0.8))) %>%
+  ggplot(aes(x=reported, y=cbinom)) +
+  geom_line(stat="identity") +
+  scale_x_continuous("Reported (w')") +
+  scale_y_continuous("P(BS | w')") +
+  facet_grid(p.world.text ~ .) +
+  theme_minimal()
+ggsave("img/detect_dumbmodel_distr.png", dumb_detect)
+```
+
+```{r}
+responderProbs <- left_join(probs, drawer, by="reported")
+responderProbsBS.sim <- data.frame(rand = runif(100000), real=rbinom(100000, 10, 0.5)) %>%
+  mutate(getK = qbinom(rand, 10, 0.5))
+#responderProbsBS.sim <- data.frame(rand, getK = rbinom(1000, 10, 0.5), real=rbinom(1000, 10, 0.5))
+
+responderProbsBS.sim %>%
+  mutate(lie = getK > real,
+         reported = ifelse(lie, getK, real)) %>%
+  ggplot(aes(x=real, y=reported)) +
+  geom_jitter() +
+  scale_x_continuous(limits=c(0,10), breaks=0:10) +
+  scale_y_continuous(limits=c(0,10), breaks=0:10) +
+  ggtitle("Simulated Computer Reported Marbles (BSing and Truth Telling)")
+```
+
+```{r}
+responderProbsBS.sim %>%
+  mutate(lie = getK > real,
+         reported = ifelse(lie, getK, real)) %>%
+  group_by(real) %>%
+  summarise(mean = mean(reported),
+            sd = sd(reported),
+            se = sd/sqrt(n())) %>%
+  ggplot(aes(x=real, y=mean)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  ggtitle("Non-Social Liar Model") +
+  scale_x_continuous("Actual") +
+  scale_y_continuous("Reported", limits=c(0,10)) +
+  theme_minimal()
+ggsave("img/lie_dumbmodel_simulated_binom.png")
+```
+
+```{r}
+responderProbsBS.sim2 <- data.frame(real=rbinom(100000, 10, 0.5), rand.lie=rbernoulli(100000, 0.4))
+responderProbsBS.sim2 <- responderProbsBS.sim2 %>%
+  mutate(reported=mapply(function(x, y) {ifelse(!y, x, ifelse(x==10, 10, sample(x:10,1)))}, real, rand.lie))
+responderProbsBS.sim2 %>%
+  group_by(real) %>%
+  summarise(mean = mean(reported),
+            sd = sd(reported),
+            se = sd/sqrt(n())) %>%
+  ggplot(aes(x=real, y=mean)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  ggtitle("Non-Social Liar Model (Randomly Samples from Lies)") +
+  scale_x_continuous("Actual") +
+  scale_y_continuous("Reported", limits=c(0,10)) +
+  theme_minimal()
+ggsave("img/lie_dumbmodel2_simulated_unif.png")
+```
+
+```{r}
+pickLie <- function(prob.lie, real.val){
+  expectedVal = prob.lie * real.val
+  if(real.val < 10){
+    lies = (real.val+1):10
+    prob.eachLie = (1-prob.lie)/length(lies)
+    for(l in lies){
+      expectedVal = expectedVal + l*prob.eachLie
+    }
+  }
+  else{
+    expectedVal = 10
+  }
+  return(expectedVal)
+}
+dumb_liar <- data.frame(real=rep(0:10,3),
+                        p.world=c(rep(0.2,11), rep(0.5,11), rep(0.8,11))) %>%
+  mutate(reported = mapply(pickLie, 1-p.world, real)) %>%
+  ggplot(aes(x=real, y=reported)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("Actual (w)") +
+  scale_y_continuous("Reported (w')", limits=c(0,10)) +
+  facet_grid(p.world ~ .) +
+  theme_minimal() +
+  theme(
+    strip.background = element_blank(),
+    strip.text.y = element_blank()
+  )
+
+ggsave("img/lie_dumbmodel_unif.png", dumb_liar)
+```
+
+```{r}
+dumbModels <- grid.arrange(dumb_liar, dumb_detect, ncol=2)
+dumbFig <- annotate_figure(dumbModels, top=text_grob("Non-Inferential Model", size=18))
+ggsave("img/dumbModels.png", dumbFig, width=6, height=3.5)
+```
+
+```{r}
+responderProbsBSDetect.sim <- data.frame(randBinom = rbinom(1000, 10, 0.5), rand = runif(1000))
+responderProbsBSDetect.sim <- responderProbsBSDetect.sim %>%
+  mutate(probCallOut = pbinom(randBinom, 10, 0.5) - (pbinom(5, 10, 0.5)-.5),
+         calledOut = rand < probCallOut)
+
+ggplot(responderProbsBSDetect.sim, aes(x=randBinom, y=probCallOut, colour=calledOut)) +
+  geom_jitter() +
+  scale_x_continuous(limits=c(0,10), breaks=0:10) +
+  ggtitle("Simulated Computer Responding (BS Detecting)")
+
+responderProbsBSDetect.sim %>%
+  group_by(randBinom) %>%
+  summarise(percCalledOut = sum(calledOut==TRUE)/n()) %>%
+  ggplot(aes(x=randBinom, y=percCalledOut)) +
+  geom_bar(stat="identity") +
+  scale_x_continuous(limits=c(0,10), breaks=0:10) +
+  scale_y_continuous(limits=c(0,1)) +
+  ggtitle("Simulated Computer Responding (BS Detecting) - Percent Called Out")
+```
+
+```{r}
+responderProbsBD <- responderProbs %>%
+  filter(reported >= real) %>%
+  group_by(real) %>%
+  mutate(truth = real == reported,
+         sumProb = sum(binom),
+         normalized = binom/sumProb,
+         accept = utilDiffAccept * binom,
+         reject = ifelse(truth, utilDiffReject.truth * binom, utilDiffReject.lie * binom))
+
+responderProbsBD %>%
+  group_by(reported, binom, cbinom, truth, accept) %>%
+  summarise(reject = mean(reject)) %>%
+  gather("decision", "expectedUtil",5:6) %>%
+  ggplot(aes(x=reported, y=expectedUtil, colour=decision, linetype=truth)) +
+  geom_line(stat="identity") +
+  scale_x_continuous(breaks=pretty(reported, n=10)) +
+  scale_linetype_manual(values=c(2,1)) +
+  ggtitle("Expected Marble-Drawer Utility by Reported Value")
+
+# responderProbsBD %>%
+#   group_by(reported, binom, cbinom, accept) %>%
+#   summarise(reject = mean(reject)) %>%
+#   gather("decision", "expectedUtil",4:5) %>%
+#   ggplot(aes(x=reported, y=expectedUtil, colour=decision)) +  
+#   geom_line(stat="identity") +
+#   scale_x_continuous(breaks=pretty(reported, n=10)) +
+#   ggtitle("Expected Marble-Drawer Utility by Reported Value, Averaging Truths + Lies")
+```
+
+# RSA Model
+
+```{r}
+n_init <- 10
+p_init <- 0.5
+#x_init <- rbinom(1, n, p)
+x_init <- 10
+util_maxim <- 0.8
+
+get.p_l.world_given_utt <- function(n, p, x){
+  u_s.noBS <- x
+  u_l.noBS <- n - x
+  u_s.BS.truth <- x
+  u_l.BS.truth <- -x
+  u_s.BS.lie <- -x
+  u_l.BS.lie <- x
+  
+  # prior
+  p.world <- dbinom(x, n, p)
+  p_s.utt_given_world <- pbinom(x, n, p)
+  p.product <- p.world * p_s.utt_given_world
+  
+  p.product_all_worlds <- 0
+  for(i in 0:10){ #world_i
+    p.world_i <- dbinom(i, n, p)
+    if(x == i){
+      p_s.utt_given_world_i <- pbinom(x, n, p)
+    }else if(x < i){
+      p_s.utt_given_world_i <- 0 #likelihood.truth = cumulative binom of i in world_i
+    } else{
+      p_s.utt_given_world_i <- dbinom(x, n, p) #likelihood.lie = distribution of x in world_i
+    }
+    p.product_i <- p.world_i * p_s.utt_given_world_i
+    p.product_all_worlds <- p.product_all_worlds + p.product_i
+  }
+  p_literal.world_given_utt <- p.product / p.product_all_worlds
+  return(p.product / p.product_all_worlds)
+}
+
+# rsa_df <- data.frame(utt = 0:10)
+# rsa_df <- rsa_df %>%
+#   mutate(y=mapply(get.p_l.world_given_utt, n_init, p_init, utt))
+```

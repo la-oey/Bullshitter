@@ -1,0 +1,325 @@
+---
+title: "PSYC 211 Final Project: A recursive social inference model of deception"
+author: "Lauren Oey"
+date: "3/22/2019"
+output: html_document
+---
+
+```{r setup, include=F, warning=F, message=F}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(gridExtra)
+library(grid)
+library(ggpubr)
+source("lying_modelFunctions.R")
+```
+
+```{r simulate.cbinom, warning=F, message=F}
+numSims = 10000
+df.cbinom <- data.frame(role=factor(),
+                      p=numeric(), 
+                      decay=numeric(),
+                      ks=numeric(), # ksay in Detector, k in Liar
+                      n=numeric(),
+                      val=numeric(),
+                      se=numeric()) # prop in Detector, expLie in Liar
+
+for(i in c(0.2, 0.5, 0.8)){
+  for(j in c(1, 0.5, 0.1)){
+    sim.D <- t(replicate(numSims, recurse.D(j, i, pbinom(0:10,10,i))))
+    prop <- colMeans(sim.D)
+    se <- prop * (1-prop) / sqrt(numSims)
+    df.cbinom <- bind_rows(df.cbinom, data.frame(role="Detector", p=i, decay=j, ks=0:10, n=numSims, val=prop, se=se))
+    
+    sim.L <- t(replicate(numSims, exp.ksay(i, recurse.D(j, i, pbinom(0:10,10,i)))))
+    expLie <- colMeans(sim.L)
+    se <- apply(sim.L, 2, sd) / sqrt(numSims)
+    df.cbinom <- bind_rows(df.cbinom, data.frame(role="Liar", p=i, decay=j, ks=0:10, n=numSims, val=expLie, se=se))
+  }
+}
+```
+
+```{r graph.cbinom, warning=F, message=F, fig.cap="**Fig. 2: Model simulated results using a cumulative binomial prior.**"}
+lie.cbinom <- df.cbinom %>%
+  filter(role=="Liar") %>%
+  mutate(prob = paste("p =", p),
+         decay.txt = factor(paste("decay =", round(decay,2)), levels=c("decay = 1", "decay = 0.5", "decay = 0.1"))) %>%
+  ggplot(aes(x=ks, y=val, colour=prob)) +
+  geom_line(alpha=0.8, size=1.25) +
+  geom_errorbar(aes(ymax=val+se, ymin=val-se), alpha=0.8, width=0.5) +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  ggtitle("Marble Drawer") +
+  scale_x_continuous("Actual Marbles Drawn") +
+  scale_y_continuous("Reported Marbles Drawn", limits=c(0,10)) +
+  facet_wrap(~decay.txt) +
+  theme_minimal()
+
+detect.cbinom <- df.cbinom %>%
+  filter(role=="Detector") %>%
+  mutate(prob = paste("p =", p),
+         decay.txt = factor(paste("decay =", round(decay,2)), levels=c("decay = 1", "decay = 0.5", "decay = 0.1"))) %>%
+  ggplot(aes(x=ks, y=val, colour=prob)) +
+  geom_line(alpha=0.8, size=1.25) +
+  geom_errorbar(aes(ymax=val+se, ymin=val-se), alpha=0.8, width=0.5) +
+  ggtitle("Responder") +
+  scale_x_continuous("Reported Marbles Drawn") +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  facet_wrap(~decay.txt) +
+  theme_minimal()
+
+grid.arrange(lie.cbinom, detect.cbinom, nrow=2)
+ggsave("cbinom.png", grid.arrange(lie.cbinom, detect.cbinom, nrow=2))
+```
+
+
+
+```{r simulate.unif, warning=F, message=F}
+df.unif <- data.frame(role=factor(),
+                      p=numeric(), 
+                      decay=numeric(),
+                      ks=numeric(), # ksay in Detector, k in Liar
+                      n=numeric(),
+                      val=numeric(),
+                      se=numeric()) # prop in Detector, expLie in Liar
+
+for(i in c(0.2, 0.5, 0.8)){
+  for(j in c(1, 0.5, 0.1)){
+    sim.D <- t(replicate(numSims, recurse.D(j, i, rep(0.1,11))))
+    prop <- colMeans(sim.D)
+    se <- prop * (1-prop) / sqrt(numSims)
+    df.unif <- bind_rows(df.unif, data.frame(role="Detector", p=i, decay=j, ks=0:10, n=numSims, val=prop, se=se))
+    
+    sim.L <- t(replicate(numSims, exp.ksay(i, recurse.D(j, i, rep(0.1,11)))))
+    expLie <- colMeans(sim.L)
+    se <- apply(sim.L, 2, sd) / sqrt(numSims)
+    df.unif <- bind_rows(df.unif, data.frame(role="Liar", p=i, decay=j, ks=0:10, n=numSims, val=expLie, se=se))
+  }
+}
+```
+
+```{r graph.unif, warning=F, message=F, fig.cap="**Fig. 3: Model simulated results using a uniform prior.**"}
+lie.unif <- df.unif %>%
+  filter(role=="Liar") %>%
+  mutate(prob = paste("p =", p),
+         decay.txt = factor(paste("decay =", round(decay,2)), levels=c("decay = 1", "decay = 0.5", "decay = 0.1"))) %>%
+  ggplot(aes(x=ks, y=val, colour=prob)) +
+  geom_line(alpha=0.8, size=1.25) +
+  geom_errorbar(aes(ymax=val+se, ymin=val-se), alpha=0.8, width=0.5) +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  ggtitle("Marble Drawer") +
+  scale_x_continuous("Actual Marbles Drawn") +
+  scale_y_continuous("Reported Marbles Drawn", limits=c(0,10)) +
+  facet_wrap(~decay.txt) +
+  theme_minimal()
+
+detect.unif <- df.unif %>%
+  filter(role=="Detector") %>%
+  mutate(prob = paste("p =", p),
+         decay.txt = factor(paste("decay =", round(decay,2)), levels=c("decay = 1", "decay = 0.5", "decay = 0.1"))) %>%
+  ggplot(aes(x=ks, y=val, colour=prob)) +
+  geom_line(alpha=0.8, size=1.25) +
+  geom_errorbar(aes(ymax=val+se, ymin=val-se), alpha=0.8, width=0.5) +
+  ggtitle("Responder") +
+  scale_x_continuous("Reported Marbles Drawn") +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  facet_wrap(~decay.txt) +
+  theme_minimal()
+
+grid.arrange(lie.unif, detect.unif, nrow=2)
+ggsave("unif.png", grid.arrange(lie.unif, detect.unif, nrow=2))
+```
+
+# Recursive Inference Model
+
+```{r}
+lie.recurse <- df.unif %>%
+  filter(role=="Liar", p==0.5, decay==0.1) %>%
+  ggplot(aes(x=ks, y=val)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("") +
+  scale_y_continuous("", limits=c(0,10)) +
+  theme_minimal()
+
+detect.recurse <- df.unif %>%
+  filter(role=="Detector", p==0.5, decay==0.1) %>%
+  ggplot(aes(x=ks, y=val)) +
+  geom_line() +
+  scale_x_continuous("") +
+  scale_y_continuous("", limits=c(0,1)) +
+  theme_minimal()
+
+ideal <- ggarrange(annotate_figure(lie.recurse, right=text_grob("Liar", rot=270)), 
+                   annotate_figure(detect.recurse, right=text_grob("Lie Detector", rot=270)), nrow=2)
+idealFig <- annotate_figure(ideal, top=text_grob("Recursive Inference Model", size=12))
+```
+
+# Oracle Model
+
+```{r}
+zeroth_0.2 <- pbinom(0:numMarbles, numMarbles, 0.2) - (pbinom(2, numMarbles, 0.2) - 0.5)
+zeroth_0.5 <- pbinom(0:numMarbles, numMarbles, 0.5) - (pbinom(5, numMarbles, 0.5) - 0.5)
+zeroth_0.8 <- pbinom(0:numMarbles, numMarbles, 0.8) - (pbinom(8, numMarbles, 0.8) - 0.5)
+first_0.2 <- exp.ksay(0.2, zeroth_0.2)
+first_0.5 <- exp.ksay(0.5, zeroth_0.5)
+first_0.8 <- exp.ksay(0.8, zeroth_0.8)
+
+oracle <- data.frame(ksay=0:10,
+                     p.D=zeroth_0.5,
+                     exp.L=first_0.5)
+oracle_lie <- ggplot(oracle, aes(x=ksay, y=exp.L)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("Actual (k)") +
+  scale_y_continuous("", limits=c(0,10)) +
+  theme_minimal()
+oracle_detect <- ggplot(oracle, aes(x=ksay, y=p.D)) +
+  geom_line() +
+  scale_x_continuous("Reported (k*)") +
+  scale_y_continuous("") +
+  theme_minimal()
+oracleModel <- grid.arrange(oracle_lie, oracle_detect, nrow=2)
+oracleFig <- annotate_figure(oracleModel, top=text_grob("Oracle Model", size=12))
+```
+
+# No ToM Model
+
+```{r}
+pickLie <- function(prob.lie, real.val){
+  expectedVal = prob.lie * real.val
+  if(real.val < 10){
+    lies = (real.val+1):10
+    prob.eachLie = (1-prob.lie)/length(lies)
+    for(l in lies){
+      expectedVal = expectedVal + l*prob.eachLie
+    }
+  }
+  else{
+    expectedVal = 10
+  }
+  return(expectedVal)
+}
+
+dumbLiar <- data.frame(real=0:10) %>%
+  mutate(reported = mapply(pickLie, 0.5, real)) %>%
+  ggplot(aes(x=real, y=reported)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("") +
+  scale_y_continuous("Expected Reported (k*)", limits=c(0,10)) +
+  theme_minimal()
+
+hypothesis.test <- function(x, p.world){
+  as.numeric(binom.test(x, 10, p.world, alternative="two.sided")$p.value < 0.05)
+}
+
+dumbDetect.hypoth <- data.frame(reported=0:10) %>%
+  mutate(p.bs.ksay = mapply(hypothesis.test, reported, 0.5)) %>%
+  ggplot(aes(x=reported, y=p.bs.ksay)) +
+  geom_line() +
+  scale_x_continuous("") +
+  scale_y_continuous(bquote("Expected" *~P[D]* "(BS | k*)"), limits=c(0,1)) +
+  theme_minimal()
+
+dumb <- grid.arrange(dumbLiar, dumbDetect.hypoth, nrow=2)
+dumbFig <- annotate_figure(dumb, top=text_grob("No-Theory-of-Mind Model", size=12))
+```
+
+# Predictions at p=0.5
+
+```{r}
+modelPredict <- grid.arrange(dumbFig, oracleFig, idealFig, ncol=3)
+ggsave("img/modelPredict.png", modelPredict, width=8, height=5)
+```
+
+# Predictions at p={0.2, 0.5, 0.8}
+
+```{r}
+lie.recurse.p <- df.unif %>%
+  filter(role=="Liar", decay==0.1) %>%
+  mutate(prob = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=prob)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("Actual Marbles Drawn") +
+  scale_y_continuous("Expected Reported (k*)", limits=c(0,10)) +
+  theme_minimal()
+ggsave("img/prob.lie.png", lie.recurse.p)
+
+detect.recurse.p <- df.unif %>%
+  filter(role=="Detector", decay==0.1) %>%
+  mutate(prob = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=prob)) +
+  geom_line() +
+  scale_x_continuous("Reported Marbles Drawn") +
+  scale_y_continuous(bquote("Expected" *~P[D]* "(BS | k*)"), limits=c(0,1)) +
+  theme_minimal()
+ggsave("img/prob.detect.png", detect.recurse.p)
+
+fig.prob <- grid.arrange(lie.recurse.p, detect.recurse.p, nrow=2)
+ggsave("img/prob.png", fig.prob)
+
+# ideal.p <- ggarrange(annotate_figure(lie.recurse.p, right=text_grob("Liar", rot=270)), 
+#                    annotate_figure(detect.recurse.p, right=text_grob("Lie Detector", rot=270)), nrow=2)
+# idealFig.p <- annotate_figure(ideal.p, top=text_grob("Recursive Inference Model", size=12))
+# 
+# oracle <- data.frame(p=as.factor(c(rep(0.2,11), rep(0.5,11), rep(0.8,11))),
+#                      ksay=rep(0:10,3),
+#                      p.D=c(zeroth_0.2, zeroth_0.5, zeroth_0.8),
+#                      exp.L=c(first_0.2, first_0.5, first_0.8))
+# oracle_lie.p <- ggplot(oracle, aes(x=ksay, y=exp.L, colour=p)) +
+#   geom_line() +
+#   geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+#   scale_x_continuous("Actual Marbles Drawn") +
+#   scale_y_continuous("Expected Reported (k*)", limits=c(0,10)) +
+#   theme_minimal()
+# oracle_detect.p <- ggplot(oracle, aes(x=ksay, y=p.D, colour=p)) +
+#   geom_line() +
+#   scale_x_continuous("Reported Marbles Drawn") +
+#   scale_y_continuous(bquote("Expected" *~P[D]* "(BS | k*)")) +
+#   theme_minimal()
+# oracleModel.p <- grid.arrange(oracle_lie.p, oracle_detect.p, nrow=2)
+# oracleFig.p <- annotate_figure(oracleModel.p, top=text_grob("Oracle Model", size=12))
+# 
+# modelPredict.p <- grid.arrange(oracleFig.p, idealFig.p, ncol=2)
+```
+
+```{r}
+zeroth.detector <- rep(0.1,11)
+zeroth.liar.p <- p_t.ksay.r(0.5, zeroth.detector)
+zeroth.liar <- exp.ksay(0.5,zeroth.detector)
+first.detector <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, zeroth.liar.p)
+first.liar.p <- p_t.ksay.r(0.5, first.detector)
+first.liar <- exp.ksay(0.5,first.detector)
+second.detector <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, first.liar.p)
+second.liar.p <- p_t.ksay.r(0.5, second.detector)
+second.liar <- exp.ksay(0.5,second.detector)
+third.detector <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, second.liar.p)
+third.liar.p <- p_t.ksay.r(0.5, third.detector)
+third.liar <- exp.ksay(0.5,third.detector)
+
+
+decay.df <- data.frame(recurse.lvl = rep(0:2, each=22),
+                       role = rep(c(rep("detect",11),rep("lie",11)), 3),
+                       ks = rep(0:10, 6),
+                       ys = c(zeroth.detector, zeroth.liar, first.detector, first.liar, second.detector, second.liar))
+lie.decay <- decay.df %>%
+  filter(role=="lie") %>%
+  ggplot(aes(x=ks, y=ys)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("Actual Marbles Drawn") +
+  scale_y_continuous("Expected Reported (k*)", limits=c(0,10)) +
+  facet_wrap(~recurse.lvl, ncol=3) +
+  theme_minimal()
+detect.decay <- decay.df %>%
+  filter(role=="detect") %>%
+  ggplot(aes(x=ks, y=ys)) +
+  geom_line() +
+  scale_x_continuous("Reported Marbles Drawn") +
+  scale_y_continuous(bquote("Expected" *~P[D]* "(BS | k*)"), limits=c(0,1)) +
+  facet_wrap(~recurse.lvl, ncol=3) +
+  theme_minimal()
+fig.decay <- grid.arrange(lie.decay, detect.decay, nrow=2)
+ggsave("img/decay.png", fig.decay)
+```
