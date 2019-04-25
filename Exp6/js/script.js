@@ -9,7 +9,7 @@ var expt = {
     roles: ['bullshitter', 'bullshitDetector'],
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
     allTrialProbs: [0.5],//[0.2,0.5,0.8],
-    allLiePenalties: [5, 10, 20], //relative utility = x*2
+    allLiePenalties: [2, 5, 10], //relative utility = x*2
     trialProbs: 0,
     liePenalty: 0,
     catchTrials: [],
@@ -315,7 +315,7 @@ function restartTrial(){
 function bullshitter() {
     restartTrial();
 
-    $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.<br>Here's how points work: each red marble is 1 point for you; each blue marble is 1 point for your opponent.")
+    $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for you; each <b style='color:blue'>blue</b> marble is 1 point for your opponent.")
     $('#subjResponse').html('<label><br><br><br>Say how many <b style="color:red">red</b> marbles you want your opponent to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/> <button class="active-button" id="report-button" type="button" onclick="report();">Report!</button><br>');
     $('#urnsvg').css('background-color','white');
     $('#tubesvg').css('background-color','white');
@@ -365,7 +365,7 @@ function bullshitDetector() {
         trial.waitTime = 3000 + 6000*exponential(0.75);
         setTimeout(function(){
             clearInterval(trial.timer);
-            $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each red marble is 1 point for you; each blue marble is 1 point for your opponent.");
+            $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for your opponent; each <b style='color:blue'>blue</b> marble is 1 point for you.");
             $('#subjResponse').html('<p>Your opponent said they drew <b id="reportMarbles"/> red marbles.<br><br>Your opponent will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
             computerDraw();
             $('#reportMarbles').html(trial.reportedDrawn);
