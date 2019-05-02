@@ -1,0 +1,675 @@
+---
+title: "Bullshitter Expt 4"
+author: "Lauren Oey"
+date: "3/7/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(lme4)
+library(gridExtra)
+library(cowplot)
+library(stats4)
+knitr::opts_chunk$set(echo = TRUE)
+
+bs <- read.csv("raw.csv")
+glimpse(bs)
+summary(bs)
+
+bs <- bs %>%
+  mutate(lie = drawnRed != reportedDrawn,
+         player.bullshitter = ifelse(roleCurrent == "bullshitter", "human", "computer"),
+         player.bullshitDetector = ifelse(roleCurrent == "bullshitDetector", "human", "computer"))
+```
+
+```{r}
+exclude.sampling <- bs %>%
+  filter(reportedDrawn > 10) %>%
+  .$subjID
+
+length(unique(exclude.sampling))
+```
+
+```{r}
+catch <- bs %>%
+  filter(catchKey != -1) %>%
+  group_by(subjID) %>%
+  summarise(catchCorrect = sum(catchKey == catchResponse))
+
+ggplot(catch, aes(x=catchCorrect)) +
+  geom_bar()
+
+exclude.catch <- catch %>%
+  filter(catchCorrect <= 0.75*max(catchCorrect)) %>%
+  .$subjID
+
+length(exclude.catch)
+```
+
+```{r include=FALSE}
+# bs %>%
+#   filter(roleCurrent == "bullshitter", !subjID %in% exclude.catch, !subjID %in% exclude.sampling) %>%
+#   mutate(badLie = drawnRed > reportedDrawn) %>%
+#   group_by(subjID) %>%
+#   summarise(badLie.prop = sum(badLie)/n()) %>%
+#   ggplot(aes(x=badLie.prop)) + 
+#   geom_bar(aes(y = (..count..)/sum(..count..))) +
+#   scale_x_continuous("Proportion of Lies Produced with Reported < Actual") +
+#   scale_y_continuous("Proportion of Participants") +
+#   theme_bw()
+# ggsave("img/counterintuitiveLies.png")
+# 
+# # Participants who generated bad lies for more than 1/4 of their turns
+# excluded <- bs %>%
+#   filter(roleCurrent == "bullshitter", !subjID %in% exclude.catch, !subjID %in% exclude.sampling) %>%
+#   mutate(badLie = drawnRed > reportedDrawn) %>%
+#   group_by(subjID) %>%
+#   summarise(badLie.prop = sum(badLie)/n())
+#   
+# excluded %>%
+#   filter(badLie.prop > .2, !subjID %in% exclude.catch) %>%
+#   select(subjID, badLie.prop) %>%
+#   arrange(desc(badLie.prop))
+# 
+# excluded %>%
+#   ungroup() %>%
+#   summarise(badLiar.prop = sum(badLie.prop > 0)/n())
+```
+
+```{r}
+bs.final <- bs %>%
+  filter(!subjID %in% exclude.catch, !subjID %in% exclude.sampling, exptPart == "trial")
+
+# # of participants who completed the task
+length(unique(bs$subjID))
+
+# # of participants who passed the attention check criteria
+length(unique(bs.final$subjID))
+
+# total # of participants excluded
+length(unique(bs$subjID)) - length(unique(bs.final$subjID))
+```
+
+```{r}
+bs.final %>%
+  select(subjID, probabilityRed) %>%
+  unique() %>%
+  group_by(probabilityRed) %>%
+  summarise(count = n())
+```
+
+```{r}
+bs.final %>%
+  filter(trialNumber == 100) %>%
+  gather("playerScore","totalScore",15:16) %>%
+  mutate(playerScore = recode(playerScore, playerTotalScore = "human", oppTotalScore = "computer")) %>%
+  ggplot(aes(x=totalScore, fill=playerScore)) +
+  geom_density(alpha=0.5) +
+  ggtitle("Total Score")
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  group_by(subjID) %>%
+  summarise(propLie=sum(drawnRed!=reportedDrawn)/n()) %>%
+  arrange(propLie) %>%
+  ggplot(aes(x=propLie)) +
+  geom_histogram(fill="black", bins=20) +
+  ggtitle("Distribution of Lying Proportions") +
+  theme_minimal()
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  group_by(subjID) %>%
+  summarise(propBS=sum(callBS=="True")/n()) %>%
+  arrange(propBS) %>%
+  ggplot(aes(x=propBS)) +
+  geom_histogram(fill="black", bins=20) +
+  ggtitle("Distribution of BS Calling Proportions") +
+  theme_minimal()
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent=="bullshitter") %>%
+  mutate(Actual = drawnRed,
+         Reported = reportedDrawn) %>%
+  select(probabilityRed, Actual, Reported) %>%
+  gather("key", "value", 2:3) %>%
+  ggplot(aes(x=value, fill=key)) +
+  geom_density(alpha=0.5, adjust=2) +
+  facet_wrap(~probabilityRed) +
+  theme_minimal()
+ggsave("img/distrComp_actualvsreported.png")
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  group_by(probabilityRed, reportedDrawn) %>%
+  summarise(propBS = sum(callBS=="True")/n()) %>%
+  ggplot(aes(x=reportedDrawn, y=propBS, colour=as.factor(probabilityRed))) +
+  geom_point() +
+  geom_smooth(family="binomial")
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent=="bullshitter") %>%
+  group_by(drawnRed, reportedDrawn, probabilityRed) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  group_by(drawnRed, probabilityRed) %>%
+  mutate(propFreq = count/sum(count)) %>%
+  ggplot(aes(x=drawnRed, y=reportedDrawn, fill=propFreq)) +
+  geom_tile() +
+  scale_x_continuous("Actual Marbles Drawn") +
+  scale_y_continuous("Reported Marbles Drawn") +
+  facet_grid(~ as.factor(probabilityRed)) +
+  theme_bw()
+ggsave("img/lies_tile.png")
+```
+
+```{r}
+lieResults <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, drawnRed) %>%
+  summarise(mean = mean(reportedDrawn),
+            sd = sd(reportedDrawn),
+            se = sd/sqrt(n()),
+            n=n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=drawnRed, y=mean, colour=probabilityRed.txt)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.3) +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("Actual Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Reported Marbles Drawn", limits=c(0,10)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+ggsave("img/actual_vs_reported.png", lieResults)
+
+detectResults <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(min=prop-se, max=prop+se), width=.3) +
+  scale_x_continuous("Reported Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+ggsave("img/probBS.png", detectResults)
+
+both <- plot_grid(lieResults, detectResults, align = "h", ncol = 2, rel_widths = c(9/20, 11/20))
+both
+ggsave("img/expt4.png", both, height=5, width=10)
+```
+
+```{r}
+lieProp <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, drawnRed) %>%
+  summarise(prop = sum(drawnRed == reportedDrawn)/n(),
+            se = prop*(1-prop)/sqrt(n()),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=drawnRed, y=prop, colour=probabilityRed.txt)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin=prop-se, ymax=prop+se), width=.3) +
+  scale_x_continuous("Actual Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion of True Marbles Reported", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+  
+lieVals <- bs.final %>%
+  filter(roleCurrent == "bullshitter", drawnRed != reportedDrawn) %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, drawnRed) %>%
+  summarise(mean = mean(reportedDrawn),
+            sd = sd(reportedDrawn),
+            se = sd/sqrt(n()),
+            n=n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=drawnRed, y=mean, colour=probabilityRed.txt)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.3) +
+  geom_abline(intercept = 0, slope = 1, colour="red", linetype=2) +
+  scale_x_continuous("Actual Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Reported Marbles Drawn", limits=c(0,10)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+
+grid.arrange(lieProp, lieVals, nrow=2)
+ggsave("img/liePropVals.png", grid.arrange(lieProp, lieVals, nrow=2))
+```
+
+```{r}
+humanDetect <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  mutate(callBS = ifelse(callBS == "False", FALSE, TRUE),
+         avgRed = probabilityRed * 10,
+         reportedDrawn.sq = reportedDrawn ^ 2,
+         probabilityRed.f = relevel(as.factor(probabilityRed), ref="0.5"))
+
+# contrasts - FALSE set to 0
+contrasts(humanDetect$probabilityRed.f)
+model.BS.quad <- glmer(callBS ~ poly(reportedDrawn, 2)* 
+                       probabilityRed.f + (1|subjID), data=humanDetect, family="binomial")
+summary(model.BS.quad)
+
+# checks if model converges
+with(model.BS.quad@optinfo$derivs,max(abs(solve(Hessian,gradient)))<2e-3)
+
+
+model.BS.lin <- glmer(callBS ~ poly(reportedDrawn,1)* 
+                       probabilityRed.f + (1|subjID), data=humanDetect, family="binomial")
+summary(model.BS.lin)
+
+anova(model.BS.lin, model.BS.quad, test="Chisq")
+
+lm.coefs <- summary(model.BS.quad)$coef[,"Estimate"]
+
+quadratic <- function(a, b, c){
+  plus <- (-b + sqrt(b^2 - 4*a*c)) / (2*a)
+  minus <- (-b - sqrt(b^2 - 4*a*c)) / (2*a)
+  return(c(plus, minus))
+}
+est.b <- function(a, b, c){
+  
+}
+upward <- function(a){
+  a > 0
+}
+quadratic(1,2,1)
+stdform.0.2 <- quadratic(lm.coefs["poly(reportedDrawn, 2)2"], lm.coefs["poly(reportedDrawn, 2)1"], lm.coefs["(Intercept)"]) 
+dir.0.2 <- upward(lm.coefs["poly(reportedDrawn, 2)2"])
+stdform.0.5 <- quadratic(lm.coefs["poly(reportedDrawn, 2)2"]+lm.coefs["poly(reportedDrawn, 2)2:as.factor(probabilityRed)0.5"], 
+                         lm.coefs["poly(reportedDrawn, 2)1"]+lm.coefs["poly(reportedDrawn, 2)1:as.factor(probabilityRed)0.5"],
+                         lm.coefs["(Intercept)"]+lm.coefs["as.factor(probabilityRed)0.5"]) 
+dir.0.5 <- upward(lm.coefs["poly(reportedDrawn, 2)2"]+lm.coefs["poly(reportedDrawn, 2)2:as.factor(probabilityRed)0.5"])
+stdform.0.8 <- quadratic(lm.coefs["poly(reportedDrawn, 2)2"]+lm.coefs["poly(reportedDrawn, 2)2:as.factor(probabilityRed)0.8"], 
+                         lm.coefs["poly(reportedDrawn, 2)1"]+lm.coefs["poly(reportedDrawn, 2)1:as.factor(probabilityRed)0.8"], 
+                         lm.coefs["(Intercept)"]+lm.coefs["as.factor(probabilityRed)0.8"]) 
+dir.0.8 <- upward(lm.coefs["poly(reportedDrawn, 2)2"]+lm.coefs["poly(reportedDrawn, 2)2:as.factor(probabilityRed)0.8"])
+
+# thresh.x1 <- function(x2){
+#   (-lm.coefs["(Intercept)"]-lm.coefs["probabilityRed"]*x2)/(lm.coefs["reportedDrawn"]+lm.coefs["reportedDrawn:probabilityRed"]*x2)
+# }
+# thresh.x1(c(0.2,0.5,0.8)) #returns predicted k* when P(BS|k*) = {0.2, 0.5, 0.8}
+
+logitToProb <- function(logit){
+  exp(logit) / (1+exp(logit))
+}
+
+probToLogit <- function(prob){
+  log(prob / (1 - prob))
+}
+```
+
+
+## MLE Analysis
+
+```{r}
+logisticModel <- function(x, a, b, c){
+  logitToProb(a*(x-b)^2+c)
+}
+
+
+loglik <- function(x, y, a, b, c){
+  sum(
+    pmax(-6, dbinom(y, 1, logisticModel(x, a, b, c), log=T))
+  )
+}
+
+brutefit <- function(tmp){
+  nLL <- function(a, b, c){
+    -loglik(tmp$reportedDrawn, as.numeric(tmp$callBS), a, b, c)
+  }
+  
+  iter = 0
+  fits = NULL
+  fit = NULL
+  while(is.null(fits)){
+    try(fit <- summary(mle(nLL, 
+                           start=list(a=runif(1, ps["ma"], ps["sa"]), 
+                                      b=runif(1, ps["mb"], ps["sb"]), 
+                                      c=runif(1, ps["mc"], ps["sc"])))), TRUE)
+    iter = iter+1
+    
+    if(! is.null(fit)){
+      fits <- c(tmp$probabilityRed[1], -0.5*fit@m2logL, length(tmp$reportedDrawn), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
+    } else {
+      if(iter>100){
+        fits <- c(tmp$probabilityRed[1], -9999, 0, 0, 0, 0)
+      }      
+    }
+  }
+  names(fits) <- c("probabilityRed", "logL", "n", "est.a", "est.b", "est.c", "se.a", "se.b", "se.c")
+  return(fits)
+}
+
+ps = c(-0.3, 0.3, -0.3, 0.3, -0.3, 0.3)
+names(ps) <- c("ma", "sa", "mb", "sb", "mc", "sc")
+quadr.fits <- data.frame(do.call(rbind, by(humanDetect, humanDetect$probabilityRed, brutefit)))
+print(paste("Failed quadratic fits:", sum(quadr.fits$logL==-9999)))
+
+
+quadr.est <- quadr.fits %>%
+  select(1:6) %>%
+  gather("variable", "estimate", 4:6) %>%
+  mutate(variable = gsub("est.", "", variable))
+quadr.se <- quadr.fits %>%
+  select(-c(4:6)) %>%
+  gather("variable", "std.err", 4:6) %>%
+  mutate(variable = gsub("se.", "", variable))
+quadr.summ <- left_join(quadr.est, quadr.se, by=c("probabilityRed","logL","n","variable"))
+quadr.summ %>%
+  mutate(z.value = estimate/std.err,
+         p.value = ifelse(pnorm(-abs(z.value)) > .000001, pnorm(-abs(z.value)), "<.000001")) %>%
+  arrange(probabilityRed, variable)
+
+# y = a(x-b)^2 + c
+b_0.2 <- quadr.summ %>%
+  filter(variable == "b", probabilityRed == 0.2)
+b_0.5 <- quadr.summ %>%
+  filter(variable == "b", probabilityRed == 0.5)
+b_0.8 <- quadr.summ %>%
+  filter(variable == "b", probabilityRed == 0.8)
+
+t.test.summ <- function(m1, sd1, n1, m2, sd2, n2){
+  s_p <- sqrt(((n1-1)*sd1^2 + (n2-1)*sd2^2) / (n1+n2-2))
+  t <- (m1 - m2) / (s_p * sqrt(1/n1 + 1/n2))
+  p <- pt(abs(t), n1 + n2 - 2, lower.tail=F)
+  return(data.frame(m1, sd1, n1, m2, sd2, n2, t, p))
+}
+
+t.test.summ(b_0.5$estimate, b_0.5$std.err, b_0.5$n, b_0.2$estimate, b_0.2$std.err, b_0.2$n)
+t.test.summ(b_0.5$estimate, b_0.5$std.err, b_0.5$n, b_0.8$estimate, b_0.8$std.err, b_0.8$n)
+
+quadr.plot <- data.frame(x=rep(0:10,3), 
+           p=as.factor(c(rep(0.2,11), rep(0.5,11), rep(0.8,11))),
+           a=c(rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.8],11)),
+           b=c(rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.8],11)),
+           c=c(rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.8],11))) %>%
+  mutate(y=a*(x-b)^2+c,
+         prob=logitToProb(y))
+ggplot(quadr.plot, aes(x=x, y=prob, colour=p)) +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1))
+
+ggsave("img/quadraticFit.png")
+```
+
+```{r}
+exptDetect <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  mutate(fit="experiment")
+quadr.plot2 <- data.frame(probabilityRed.txt = paste("p =", quadr.plot$p),
+                          reportedDrawn = quadr.plot$x,
+                          prop = quadr.plot$prob,
+                          se = NA,
+                          n = NA,
+                          fit = "model")
+quadr.plot_full <- bind_rows(exptDetect, quadr.plot2)
+ggplot(data=quadr.plot_full, aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, linetype=fit)) +
+  geom_point(data=filter(quadr.plot_full, fit=="experiment")) +
+  geom_line() +
+  geom_errorbar(data=filter(quadr.plot_full, fit=="experiment"), aes(x=reportedDrawn, colour=probabilityRed.txt, min=prop-se, max=prop+se), width=.3) +
+  scale_x_continuous("Reported Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+ggsave("img/fit_expt_model.png")
+```
+
+```{r warning=FALSE}
+logisticModel <- function(x, a, b, c){
+  logitToProb(a*(x-b)^2+c)
+}
+
+loglik <- function(x, y, a, b, c, alph){
+  alph2 <- logitToProb(alph)
+  sum(
+    pmax(-6, dbinom(y, 1, alph2/2 + (1-alph2)*logisticModel(x, a, b, c), log=T))
+  )
+}
+
+brutefit <- function(tmp){
+  nLL <- function(a, b, c, alph){
+    -loglik(tmp$reportedDrawn, as.numeric(tmp$callBS), a, b, c, alph)
+  }
+
+  iter = 0
+  fits = NULL
+  fit = NULL
+  while(is.null(fits)){
+    try(fit <- summary(mle(nLL,
+                           start=list(a=runif(1, ps["min_a"], ps["max_a"]),
+                                      b=runif(1, ps["min_b"], ps["max_b"]),
+                                      c=runif(1, ps["min_c"], ps["max_c"]),
+                                      alph=runif(1, ps["min_alph"], ps["max_alph"])))), TRUE)
+    iter = iter+1
+
+    if(! is.null(fit)){
+      fits <- c(tmp$probabilityRed[1], -0.5*fit@m2logL, length(tmp$reportedDrawn), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
+    } else {
+      if(iter>100){
+        fits <- c(tmp$probabilityRed[1], -9999, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+      }
+    }
+  }
+  names(fits) <- c("probabilityRed", "logL", "n", "est.a", "est.b", "est.c", "est.alph", "se.a", "se.b", "se.c", "se.alph")
+  return(fits)
+}
+
+ps = c(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -100, -10)
+names(ps) <- c("min_a", "max_a", "min_b", "max_b", "min_c", "max_c", "min_alph", "max_alph")
+quadr.fits <- data.frame(do.call(rbind, by(humanDetect, humanDetect$probabilityRed, brutefit)))
+print(paste("Failed quadratic fits:", sum(quadr.fits$logL==-9999)))
+
+
+quadr.est <- quadr.fits %>%
+  select(1:7) %>%
+  gather("variable", "estimate", 4:7) %>%
+  mutate(variable = gsub("est.", "", variable))
+quadr.se <- quadr.fits %>%
+  select(-c(4:7)) %>%
+  gather("variable", "std.err", 4:7) %>%
+  mutate(variable = gsub("se.", "", variable))
+quadr.summ <- left_join(quadr.est, quadr.se, by=c("probabilityRed","logL","n","variable"))
+quadr.summ %>%
+  mutate(z.value = estimate/std.err,
+         p.value = ifelse(pnorm(-abs(z.value)) > .000001, pnorm(-abs(z.value)), "<.000001")) %>%
+  arrange(probabilityRed, variable)
+
+# y = a(x-b)^2 + c
+b_0.2 <- quadr.summ %>%
+  filter(variable == "b", probabilityRed == 0.2)
+b_0.5 <- quadr.summ %>%
+  filter(variable == "b", probabilityRed == 0.5)
+b_0.8 <- quadr.summ %>%
+  filter(variable == "b", probabilityRed == 0.8)
+
+t.test.summ <- function(m1, sd1, n1, m2, sd2, n2){
+  s_p <- sqrt(((n1-1)*sd1^2 + (n2-1)*sd2^2) / (n1+n2-2))
+  t <- (m1 - m2) / (s_p * sqrt(1/n1 + 1/n2))
+  p <- pt(abs(t), n1 + n2 - 2, lower.tail=F)
+  return(data.frame(m1, sd1, n1, m2, sd2, n2, t, p))
+}
+
+t.test.summ(b_0.5$estimate, b_0.5$std.err, b_0.5$n, b_0.2$estimate, b_0.2$std.err, b_0.2$n)
+t.test.summ(b_0.5$estimate, b_0.5$std.err, b_0.5$n, b_0.8$estimate, b_0.8$std.err, b_0.8$n)
+
+quadr.plot <- data.frame(x=rep(0:10,3), 
+           p=as.factor(c(rep(0.2,11), rep(0.5,11), rep(0.8,11))),
+           a=c(rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.8],11)),
+           b=c(rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.8],11)),
+           c=c(rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.8],11)),
+           alph=c(rep(quadr.fits$est.alph[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.alph[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.alph[quadr.fits$probabilityRed==0.8],11))) %>%
+  mutate(y=a*(x-b)^2+c,
+         alph2 = logitToProb(alph),
+         prob=alph2/2 + (1-alph2)*logitToProb(y))
+ggplot(quadr.plot, aes(x=x, y=prob, colour=p)) +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1))
+
+
+exptDetect <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  mutate(fit="experiment")
+quadr.plot2 <- data.frame(probabilityRed.txt = paste("p =", quadr.plot$p),
+                          reportedDrawn = quadr.plot$x,
+                          prop = quadr.plot$prob,
+                          se = NA,
+                          n = NA,
+                          fit = "model")
+quadr.plot_full <- bind_rows(exptDetect, quadr.plot2)
+ggplot(data=quadr.plot_full, aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, linetype=fit)) +
+  geom_point(data=filter(quadr.plot_full, fit=="experiment")) +
+  geom_line() +
+  geom_errorbar(data=filter(quadr.plot_full, fit=="experiment"), aes(x=reportedDrawn, colour=probabilityRed.txt, min=prop-se, max=prop+se), width=.3) +
+  scale_x_continuous("Reported Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+```
+
+# Artificial Data
+
+```{r include=FALSE}
+artifParabola <- function(p, ksay){
+  runif(1) < logitToProb(0.06*(ksay-7*p)^2-1.5)
+}
+artificialResp <- mapply(artifParabola, humanDetect$probabilityRed, humanDetect$reportedDrawn)
+
+artificial <- data.frame(probabilityRed = humanDetect$probabilityRed,
+                         reportedDrawn = humanDetect$reportedDrawn,
+                         callBS = artificialResp)
+
+#artificial data, sanity check
+quadr.fits <- data.frame(do.call(rbind, by(artificial, artificial$probabilityRed, brutefit)))
+print(paste("Failed quadratic fits:", sum(quadr.fits$logL==-9999)))
+
+quadr.plot <- data.frame(x=rep(0:10,3), 
+           p=as.factor(c(rep(0.2,11), rep(0.5,11), rep(0.8,11))),
+           a=c(rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.a[quadr.fits$probabilityRed==0.8],11)),
+           b=c(rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.b[quadr.fits$probabilityRed==0.8],11)),
+           c=c(rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.2],11),
+               rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.5],11),
+               rep(quadr.fits$est.c[quadr.fits$probabilityRed==0.8],11))) %>%
+  mutate(y=a*(x-b)^2+c,
+         prob=logitToProb(y))
+ggplot(quadr.plot, aes(x=x, y=prob, colour=p)) +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1))
+```
+
+
+
+
+```{r include=FALSE}
+subjModels <- data.frame(subjID=character(),
+                         probabilityRed=numeric(),
+                         variable=character(),
+                         Estimate=numeric(),
+                         Std.Error=numeric(),
+                         z.value=numeric(),
+                         p.value=numeric())
+for(s in unique(humanDetect$subjID)){
+  subjDat <- humanDetect %>%
+    filter(subjID == s)
+  subjModel <- glm(callBS ~ I(reportedDrawn^2) + reportedDrawn, data=subjDat, family="binomial")
+  subjModels <- bind_rows(subjModels, 
+                          data.frame(subjID=s, 
+                                     probabilityRed=unique(subjDat$probabilityRed),
+                                     variable=c("Intercept","reportedDrawn.sq", "reportedDrawn"),
+                                     Estimate=summary(subjModel)$coef[,"Estimate"],
+                                     Std.Error=summary(subjModel)$coef[,"Std. Error"],
+                                     z.value=summary(subjModel)$coef[,"z value"],
+                                     p.value=summary(subjModel)$coef[,"Pr(>|z|)"]))
+  
+}
+subjModels
+```
+
+```{r include=FALSE}
+condModels <- data.frame(probabilityRed=numeric(),
+                         variable=character(),
+                         Estimate=numeric(),
+                         Std.Error=numeric(),
+                         z.value=numeric(),
+                         p.value=numeric(),
+                         signif=logical())
+for(c in unique(humanDetect$probabilityRed)){
+  condDat <- humanDetect %>%
+    filter(probabilityRed == c)
+  condModel <- glmer(callBS ~ I(reportedDrawn^2) + reportedDrawn + (1 | subjID), data=condDat, family="binomial")
+  condModels <- bind_rows(condModels, 
+                          data.frame(probabilityRed=c,
+                                     variable=c("Intercept","reportedDrawn.sq", "reportedDrawn"),
+                                     Estimate=summary(condModel)$coef[,"Estimate"],
+                                     Std.Error=summary(condModel)$coef[,"Std. Error"],
+                                     z.value=summary(condModel)$coef[,"z value"],
+                                     p.value=summary(condModel)$coef[,"Pr(>|z|)"],
+                                     signif=summary(condModel)$coef[,"Pr(>|z|)"] < .05))
+}
+condModels
+```
+
+```{r include=FALSE}
+model.BS.me.c <- glmer(callBS ~ (reportedDrawn.sq + reportedDrawn) * 
+                       probabilityRed + 
+                       (1|subjID), data=humanDetect, family="binomial")
+summary(model.BS.me.c)
+```
+
+
