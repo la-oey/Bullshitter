@@ -55,7 +55,7 @@ var trial = {
     reportedDrawn: 0,
     compLie: 0,
     compUnifLie: false,
-    compDetect: 0.05,
+    compDetect: 0.1,
     callBS: false,
     callBStxt: '',
     catch: {
@@ -204,7 +204,8 @@ function report(){
     function bullshitterWait() {
         flickerWait();
         
-        trial.waitTime = 1000 + 3000*exponential(0.75);
+        //trial.waitTime = 1000 + 3000*exponential(0.75);
+        trial.waitTime = 0;
         setTimeout(function(){
             clearInterval(trial.timer);
             $('#subjResponse').html("<p><br>Your opponent made a decision. Click 'Next!' to continue.<br><br></p>")
@@ -264,7 +265,7 @@ function callout(call){
 }
 
 function computerBSDetector(){
-    //trial.callBS = false;
+    trial.callBS = false;
     //trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at 0.5 for 5 marbles drawn
     trial.compLie = -1;
     //console.log("CompDetect: " + trial.compDetect)
@@ -365,7 +366,8 @@ function bullshitDetector() {
     function bullshitDetectWait() {
         flickerWait();
         
-        trial.waitTime = 3000 + 6000*exponential(0.75);
+        //trial.waitTime = 3000 + 6000*exponential(0.75);
+        trial.waitTime = 0;
         setTimeout(function(){
             clearInterval(trial.timer);
             $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for your opponent; each <b style='color:blue'>blue</b> marble is 1 point for you.");
