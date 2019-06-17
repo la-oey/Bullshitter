@@ -1,81 +1,101 @@
 numMarbles = 10
 KSAY = matrix(rep(0:numMarbles,numMarbles+1),nrow=numMarbles+1)
 K = matrix(rep(0:numMarbles, each=numMarbles+1), nrow=numMarbles+1)
-ALPH = 0.25
 BET = 0.8
-#ALPH = 0.4
+ALPH = 0.25
 liePenalty = 10 # 10 # -5
 faPenalty = 5 # 5 # 0
 Expt = 4
+moral = 20 #liar's internal penalty for lying
+#moral = 5
 
 # Depends on Expt #
 u.L <- function(ksay, lie, BS) {
+  util = 0
   if(Expt %in% 1:2){
     if(!BS){
-        return(2*ksay - 10) # no BS + no lie, no BS + lie
-      } else{
-        if(!lie){
-          return(2*ksay) # BS + no lie
-        } else{
-          return(-2*ksay) # BS + lie
-        }
-      }
-  } else if(Expt %in% 3:4){
-    if(!BS){
-      return(2*ksay - 10) # no BS + no lie, no BS + lie
+      util = 2*ksay - 10 # no BS + no lie, no BS + lie
     } else{
       if(!lie){
-        return(2*ksay - (10-faPenalty)) # BS + no lie
+        util = 2*ksay # BS + no lie
       } else{
-        return(rep(-liePenalty, length(ksay))) # BS + lie
+        util = -2*ksay # BS + lie
+      }
+    }
+  } else if(Expt %in% 3:4){
+    if(!BS){
+      util = 2*ksay - 10 # no BS + no lie, no BS + lie
+    } else{
+      if(!lie){
+        util = 2*ksay - (10-faPenalty) # BS + no lie
+      } else{
+        util = rep(-liePenalty, length(ksay)) # BS + lie
       }
     }
   } else if(Expt == 5){
     if(!BS){
-      return(10 - 2*ksay) # no BS + no lie, no BS + lie
+      util = 10 - 2*ksay # no BS + no lie, no BS + lie
     } else{
       if(!lie){
-        return(10 - 2*ksay + faPenalty) # BS + no lie
+        util = 10 - 2*ksay + faPenalty # BS + no lie
       } else{
-        return(rep(-liePenalty, length(ksay))) # BS + lie
+        util = rep(-liePenalty, length(ksay)) # BS + lie
       }
     }
   }
+  if(lie){
+    util = util - moral
+  }
+  return(util)
 }
+
 
 u.D <- function(ksay, lie, BS) {
   if(Expt %in% 1:2){
     if(!BS){
-      return(10 - 2*ksay) # no BS + no lie, no BS + lie
+      util = 10 - 2*ksay # no BS + no lie, no BS + lie
     } else{
       if(!lie){
-        return(-2*ksay) # BS + no lie
+        util = -2*ksay # BS + no lie
       } else{
-        return(2*ksay) # BS + lie
+        util = 2*ksay # BS + lie
       }
     }
   } else if(Expt %in% 3:4){
     if(!BS){
-      return(10 - 2*ksay) # no BS + no lie, no BS + lie
+      util = 10 - 2*ksay # no BS + no lie, no BS + lie
     } else{
       if(!lie){
-        return((10-faPenalty) - 2*ksay) # BS + no lie
+        util = (10-faPenalty) - 2*ksay # BS + no lie
       } else{
-        return(rep(liePenalty, length(ksay))) # BS + lie
+        util = rep(liePenalty, length(ksay)) # BS + lie
       }
     }
   } else if(Expt == 5){
     if(!BS){
-      return(2*ksay - 10) # no BS + no lie, no BS + lie
+      util = 2*ksay - 10 # no BS + no lie, no BS + lie
     } else{
       if(!lie){
-        return(2*ksay - 10 - faPenalty) # BS + no lie
+        util = 2*ksay - 10 - faPenalty # BS + no lie
       } else{
-        return(rep(liePenalty, length(ksay))) # BS + lie
+        util = rep(liePenalty, length(ksay)) # BS + lie
       }
     }
   }
+  # if(lie){
+  #   util = util + moral
+  # }
+  return(util)
 }
+
+u.L(0:10, TRUE, FALSE)
+u.L(0:10, TRUE, TRUE)
+u.L(0:10, FALSE, FALSE)
+u.L(0:10, FALSE, TRUE)
+u.D(0:10, TRUE, FALSE)
+u.D(0:10, TRUE, TRUE)
+u.D(0:10, FALSE, FALSE)
+u.D(0:10, FALSE, TRUE)
 
 softmax <- function(allEV) { # allEV = vector of numerics
   mapply(function(i) exp(i*ALPH)/sum(exp(allEV*ALPH)), allEV)
