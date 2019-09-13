@@ -1,0 +1,280 @@
+---
+title: "Lying MLE"
+author: "Lauren Oey"
+date: "9/9/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(stats4)
+library(plotly)
+
+source("lying_modelFunctions.R")
+knitr::opts_chunk$set(echo = TRUE)
+
+expt4 <- read.csv("bsfinal_expt4.csv")
+expt4 <- mutate(expt4, expt = "expt4")
+expt5 <- read.csv("bsfinal_expt5.csv")
+expt5 <- mutate(expt5, expt = "expt5")
+bs.final <- bind_rows(expt4, expt5) %>%
+  mutate(expt = as.factor(expt))
+```
+# MLE Fit
+
+```{r}
+humanLie <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(condition = paste0(probabilityRed,"_",expt))
+
+logitToProb <- function(logit){
+  exp(logit) / (1+exp(logit))
+}
+
+probToLogit <- function(prob){
+  log(prob / (1 - prob))
+}
+
+# w = b + a
+# u = a / (b + a)
+
+
+lieLogisticModel <- function(k, beta, mu){
+  logodds = beta * (k-mu)
+  logitToProb(pmin(10, pmax(-10, logodds)))
+}
+
+p.lie.k <- function(k, beta, mu){
+  lieLogisticModel(k, beta, mu)
+}
+
+
+p.kstar.k <- function(k, kstar, alph){
+  alph = logitToProb(alph)
+  dbinom(kstar, 10, alph) / (1-dbinom(k, 10, alph))  
+}
+
+lieLogisticBinom <- function(k, kstar, beta, mu, alph){
+  p.lie = p.lie.k(k, beta, mu)
+  ifelse(k == kstar, 1 - p.lie, p.lie * p.kstar.k(k, kstar, alph))
+}
+
+
+#lieLogisticBinom(5,6,2,1,5,2,5,0)
+
+nLL <- function(beta, mu0.2_4, alph0.2_4,
+                      mu0.5_4, alph0.5_4,
+                      mu0.8_4, alph0.8_4,
+                      mu0.2_5, alph0.2_5,
+                      mu0.5_5, alph0.5_5,
+                      mu0.8_5, alph0.8_5){
+  k = humanLie$drawnRed
+  kstar = humanLie$reportedDrawn
+  expt = humanLie$expt
+  prob = humanLie$probabilityRed
+  mu = case_when(
+    prob == 0.2 & expt == "expt4" ~ mu0.2_4,
+    prob == 0.5 & expt == "expt4" ~ mu0.5_4,
+    prob == 0.8 & expt == "expt4" ~ mu0.8_4,
+    prob == 0.2 & expt == "expt5" ~ mu0.2_5,
+    prob == 0.5 & expt == "expt5" ~ mu0.5_5,
+    prob == 0.8 & expt == "expt5" ~ mu0.8_5
+   )
+  alph = case_when(
+    prob == 0.2 & expt == "expt4" ~ alph0.2_4,
+    prob == 0.5 & expt == "expt4" ~ alph0.5_4,
+    prob == 0.8 & expt == "expt4" ~ alph0.8_4,
+    prob == 0.2 & expt == "expt5" ~ alph0.2_5,
+    prob == 0.5 & expt == "expt5" ~ alph0.5_5,
+    prob == 0.8 & expt == "expt5" ~ alph0.8_5
+   )
+  
+  betas = ifelse(expt=="expt4", 1*beta, -1*beta)
+  
+  pred = lieLogisticBinom(k, kstar, betas, mu, alph)
+  # likelihood of observed kstar for that k, given parameters
+  neg.log.lik = -1*sum(log(pred))
+  mus = c(mu0.2_4, mu0.5_4, mu0.8_4, mu0.2_5, mu0.5_5, mu0.8_5)
+  alphas = c(alph0.2_4, alph0.5_4, alph0.8_4, alph0.2_5, alph0.5_5, alph0.8_5)
+  #neg.log.prior = sum(.0001*(mus-5)^2)-abs(beta)+ sum(alphas^2)+u*10
+  neg.log.prior = 0
+  neg.log.lik+neg.log.prior
+}
+
+# as bernoulli instead of if statement
+
+
+fit <- summary(mle(nLL,
+           start=list(beta=rnorm(1, 0, 0.5),
+                      mu0.2_4=rnorm(1, 5, 3),
+                      alph0.2_4=rnorm(1, 0, 0.5),
+                      mu0.5_4=rnorm(1, 5, 3),
+                      alph0.5_4=rnorm(1, 0, 0.5),
+                      mu0.8_4=rnorm(1, 5, 3),
+                      alph0.8_4=rnorm(1, 0, 0.5),
+                      mu0.2_5=rnorm(1, 5, 3),
+                      alph0.2_5=rnorm(1, 0, 0.5),
+                      mu0.5_5=rnorm(1, 5, 3),
+                      alph0.5_5=rnorm(1, 0, 0.5),
+                      mu0.8_5=rnorm(1, 5, 3),
+                      alph0.8_5=rnorm(1, 0, 0.5)),
+           method = "BFGS"))
+fit
+```
+
+# P(k* | k)
+
+bin2d graph
+
+```{r}
+template <- data.frame(expt = NA,
+                       probabilityRed = rep(0,11),
+                       drawnRed = rep(0,11),
+                       reportedDrawn = 0:10,
+                       n = rep(0,11))
+
+complete4.5 <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  group_by(expt, probabilityRed, drawnRed, reportedDrawn) %>%
+  summarise(n=n()) 
+
+lieCtFull <- bind_rows(template,complete4.5) %>%
+  complete(expt, probabilityRed, drawnRed, reportedDrawn, fill=list(n=0)) %>%
+  filter(!is.na(expt), probabilityRed != 0) %>%
+  group_by(expt, probabilityRed, drawnRed) %>%
+  mutate(total = sum(n),
+         proportion = n / total)
+
+lieCtFull %>%
+  mutate(logcount = ifelse(n==0, -0.1, log(n))) %>%
+  ggplot(aes(x=drawnRed, y=reportedDrawn, fill=logcount)) +
+  geom_bin2d(stat="identity") +
+  ggtitle("k* given k - results") +
+  facet_grid(probabilityRed~expt)
+
+lieMLE.pred <- data.frame(k=rep(rep(0:10,each=11),3*2), 
+                          kstar=rep(0:10, 11*3*2),
+                          p=as.factor(rep(c(rep(0.2,11*11), rep(0.5,11*11), rep(0.8,11*11)),2)),
+                          expt=as.factor(c(rep("expt4",11*11*3), rep("expt5",11*11*3))),
+                          betas=c(rep(fit@coef["beta","Estimate"],11*11*3*2)),
+                          mu=c(rep(fit@coef["mu0.2_4","Estimate"],11*11),
+                               rep(fit@coef["mu0.5_4","Estimate"],11*11),
+                               rep(fit@coef["mu0.8_4","Estimate"],11*11),
+                               rep(fit@coef["mu0.2_5","Estimate"],11*11),
+                               rep(fit@coef["mu0.5_5","Estimate"],11*11),
+                               rep(fit@coef["mu0.8_5","Estimate"],11*11)),
+                          alph=c(rep(fit@coef["alph0.2_4","Estimate"],11*11),
+                                 rep(fit@coef["alph0.5_4","Estimate"],11*11),
+                                 rep(fit@coef["alph0.8_4","Estimate"],11*11),
+                                 rep(fit@coef["alph0.2_5","Estimate"],11*11),
+                                 rep(fit@coef["alph0.5_5","Estimate"],11*11),
+                                 rep(fit@coef["alph0.8_5","Estimate"],11*11))) %>%
+  mutate(betas = ifelse(expt=="expt5", -betas, betas),
+         p.lie.k = p.lie.k(k, betas, mu),
+         p.kstar.k=lieLogisticBinom(k, kstar, betas, mu, alph),
+         logp.kstar.k = log(p.kstar.k))
+ggplot(lieMLE.pred, aes(x=k, y=kstar, fill=logp.kstar.k)) +
+  geom_bin2d(stat="identity") +
+  ggtitle("k* given k - MLE") +
+  facet_grid(p~expt)
+
+```
+
+3D graph
+
+```{r}
+matrDF <- lieCtFull %>%
+  filter(expt == "expt4", probabilityRed == 0.2) %>%
+  mutate(logcount = ifelse(n==0, -0.1, log(n))) %>%
+  ungroup() %>%
+  select(drawnRed, reportedDrawn, logcount) %>%
+  spread(drawnRed, logcount) %>%
+  select(-reportedDrawn) %>%
+  as.matrix()
+
+p <- plot_ly(z = ~matrDF) %>% add_surface()  
+p
+
+matrDF.MLE <- lieMLE.pred %>%
+  filter(expt == "expt4", p == 0.2) %>%
+  select(k, kstar, logp.kstar.k) %>%
+  spread(k, logp.kstar.k) %>%
+  select(-kstar) %>%
+  as.matrix()
+
+p.MLE <- plot_ly(z = ~matrDF.MLE) %>% add_surface()  
+p.MLE
+```
+
+Mean k* | k
+
+```{r}
+lieMLE.pred %>%
+  group_by(p, expt, k) %>%
+  summarise(mean.kstar = sum(kstar*p.kstar.k)) %>%
+  ggplot(aes(x=k, y=mean.kstar, colour=p)) +
+  geom_line() +
+  facet_wrap(~expt)
+
+
+exptLie <- humanLie %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, expt, drawnRed, reportedDrawn) %>%
+  summarise(n = n(),
+            truth = sum(drawnRed == reportedDrawn)) %>%
+  ungroup() %>%
+  group_by(probabilityRed.txt, expt, drawnRed) %>%
+  mutate(p.kstar.k = n/sum(n),
+         fit="experiment")
+lieMLE.2 <- data.frame(probabilityRed.txt = paste("p =", lieMLE.pred$p),
+                               expt = lieMLE.pred$expt,
+                               drawnRed = lieMLE.pred$k,
+                               reportedDrawn = lieMLE.pred$kstar,
+                               p.kstar.k = lieMLE.pred$p.kstar.k,
+                               n = NA,
+                               fit = "model")
+lie.full <- bind_rows(exptLie, lieMLE.2)
+
+lie.full %>%
+  group_by(fit, probabilityRed.txt, expt, drawnRed) %>%
+  summarise(mean.reported = sum(reportedDrawn*p.kstar.k)) %>%
+  ggplot(aes(x=drawnRed, y=mean.reported, colour=probabilityRed.txt, linetype=fit)) +
+  geom_line() +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=4) +
+  facet_wrap(~expt)
+
+```
+
+P(lie | k)
+
+```{r}
+lieMLE.3 <- data.frame(probabilityRed.txt = paste("p =", lieMLE.pred$p),
+                       expt = lieMLE.pred$expt,
+                       drawnRed = lieMLE.pred$k,
+                       p.lie.k = lieMLE.pred$p.lie.k,
+                       se = NA,
+                       n = NA,
+                       fit = "model") %>%
+  unique()
+exptLie.3 <- humanLie %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, expt, drawnRed) %>%
+  summarise(p.lie.k = sum(drawnRed != reportedDrawn)/n(),
+            se = sqrt(p.lie.k*(1-p.lie.k)/n()),
+            n = n()) %>%
+  mutate(fit="experiment")
+
+lie.3.full <- bind_rows(lieMLE.3, exptLie.3)
+
+
+ggplot(data=lie.3.full, aes(x=drawnRed, y=p.lie.k, colour=probabilityRed.txt, linetype=fit)) +
+  geom_point(data=filter(lie.3.full, fit=="experiment")) +
+  geom_line() +
+  geom_errorbar(data=filter(lie.3.full, fit=="experiment"), aes(x=drawnRed, colour=probabilityRed.txt, min=p.lie.k-se, max=p.lie.k+se), width=.3) +
+  scale_x_continuous("Actual Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion Lie", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  facet_wrap(~expt) +
+  theme_minimal()
+```
+

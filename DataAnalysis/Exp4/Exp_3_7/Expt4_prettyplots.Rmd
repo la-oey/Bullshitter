@@ -1,0 +1,1698 @@
+---
+title: "Expt4_prettyplots"
+author: "Lauren Oey"
+date: "6/17/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(plotly)
+library(ggthemes)
+library(lme4)
+library(gridExtra)
+library(cowplot)
+library(stats4)
+library(scales)
+source("lying_modelFunctions.R")
+knitr::opts_chunk$set(echo = TRUE)
+
+expt4 <- read.csv("bsfinal_expt4.csv")
+expt4 <- mutate(expt4, expt = "expt4")
+expt5 <- read.csv("bsfinal_expt5.csv")
+expt5 <- mutate(expt5, expt = "expt5")
+bs.final <- bind_rows(expt4, expt5) %>%
+  mutate(expt = as.factor(expt))
+#bs.final <- expt4
+df.unif_expt4 <- read_csv("sims_varyMorality_expt4.csv")
+df.unif_expt4 <- mutate(df.unif_expt4, expt = "expt4")
+moralityResponseToIdiot_expt4 <- read_csv("sims_varyMorality_liarResponseToIdiot_expt4.csv")
+moralityResponseToIdiot_expt4 <- mutate(moralityResponseToIdiot_expt4, expt = "expt4")
+df.unif_expt5 <- read_csv("sims_varyMorality_expt5.csv")
+df.unif_expt5 <- mutate(df.unif_expt5, expt = "expt5")
+moralityResponseToIdiot_expt5 <- read_csv("sims_varyMorality_liarResponseToIdiot_expt5.csv")
+moralityResponseToIdiot_expt5 <- mutate(moralityResponseToIdiot_expt5, expt = "expt5")
+df.unif <- bind_rows(df.unif_expt4, df.unif_expt5) %>%
+  mutate(expt = as.factor(expt))
+moralityResponseToIdiot <- bind_rows(moralityResponseToIdiot_expt4, moralityResponseToIdiot_expt5) %>%
+  mutate(expt = as.factor(expt))
+#df.unif <- df.unif_expt4
+#moralityResponseToIdiot <- moralityResponseToIdiot_expt4
+
+condColors.diff = c("p = 0.2" = "blue3",
+                    "p = 0.5" = "purple3",
+                    "p = 0.8" = "red3")
+
+plotTitleSize = 9.5
+axisTitleSize = 9
+#axisTitleSizeHideY = 24
+axisTextSize = 7.5
+#axisTextSizeHideY = 20
+#marginDim = margin(5,10,2,2)
+marginDim = margin(2,1,0,2)
+marginAxisX = margin(-1,0,-3.5,0)
+axisLineColour = "gray40"
+alphaLine = 0.8
+lineSize = 0.9
+ablineSize = 0.8
+axisLineSize = 0.5
+```
+
+
+```{r}
+stdErrLiar = function(morVal, datafr){
+  prediction <- datafr %>%
+    filter(role == "Liar", mor == morVal) %>%
+    mutate(probabilityRed = p,
+           drawnRed = ks,
+           predicted = val) %>%
+    select(expt, probabilityRed, drawnRed, predicted)
+  real <- bs.final %>%
+    filter(roleCurrent == "bullshitter") %>%
+    select(expt, probabilityRed, drawnRed, reportedDrawn)
+  left_join(real, prediction, by=c("expt", "probabilityRed", "drawnRed")) %>%
+    mutate(error = reportedDrawn - predicted) %>%
+    summarise(n = n(),
+              stderror = sum(error^2)/sqrt(n)) %>%
+    .$stderror
+}
+
+stdErrDetector = function(morVal, datafr){
+  prediction <- datafr %>%
+    filter(role == "Detector", mor == morVal) %>%
+    mutate(probabilityRed = p,
+           reportedDrawn = ks,
+           predicted = val) %>%
+    select(expt, probabilityRed, reportedDrawn, predicted)
+  real <- bs.final %>%
+    filter(roleCurrent == "bullshitDetector") %>%
+    select(expt, probabilityRed, reportedDrawn, callBS) %>%
+    mutate(callBS = ifelse(callBS=="True", 1, 0))
+  left_join(real, prediction, by=c("expt", "probabilityRed", "reportedDrawn")) %>%
+    mutate(error = callBS - predicted) %>%
+    summarise(n = n(),
+              stderror = sum(error^2)/sqrt(n)) %>%
+    .$stderror
+}
+
+data.frame(mor = min(df.unif$mor):max(df.unif$mor)) %>%
+  mutate(stderrLieMorality = sapply(mor, stdErrLiar, df.unif),
+         stderrDetectMorality = sapply(mor, stdErrDetector, df.unif),
+         stderrLieMoralityIdiot = sapply(mor, stdErrLiar, moralityResponseToIdiot)) %>%
+  arrange(stderrLieMoralityIdiot) %>%
+  filter(stderrLieMorality == min(stderrLieMorality) | 
+           stderrDetectMorality == min(stderrDetectMorality) | 
+           stderrLieMoralityIdiot == min(stderrLieMoralityIdiot))
+
+lieMoral = 20
+detectMoral = 8
+```
+
+
+# Pretty Plots
+
+## Recursive Inference Model
+
+```{r}
+# Recursive Model w/ Morality Penalty
+
+lie.recurse.moral <- df.unif %>%
+  filter(role=="Liar", mor==lieMoral, expt=="expt4") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_abline(size=ablineSize, intercept = 0, slope = 1, colour="darkgray", linetype=2) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  ggtitle("Recursive+Aversion") +
+  scale_x_continuous("", labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.recurse.moral
+ggsave("img/modelRecurse_lie_moral.png", lie.recurse.moral, height=2.5, width=3)
+
+detect.recurse.moral <- df.unif %>%
+  filter(role=="Detector", mor==detectMoral, expt=="expt4") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.recurse.moral
+ggsave("img/modelRecurse_detect_moral.png", detect.recurse.moral, height=8, width=7.5)
+```
+
+
+
+```{r}
+lie.recurse.nomoral <- df.unif %>%
+  filter(role=="Liar", mor==0, expt=="expt4") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_abline(size=ablineSize, intercept = 0, slope = 1, colour="darkgray", linetype=2) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  ggtitle("Recursive") +
+  scale_x_continuous("", labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.recurse.nomoral
+ggsave("img/modelRecurse_lie_nomoral.png", lie.recurse.nomoral, height=8, width=7.5)
+
+detect.recurse.nomoral <- df.unif %>%
+  filter(role=="Detector", mor==0, expt=="expt4") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.recurse.nomoral
+ggsave("img/modelRecurse_detect_nomoral.png", detect.recurse.nomoral, height=8, width=7.5)
+```
+
+
+
+
+
+
+## Response to Idiot Liar/Lie Detector
+
+```{r}
+moral = lieMoral
+Expt = 4
+LIE <- 1-diag(numMarbles+1)
+mat.idiotLiar <- matrix(rep(1/11,11*11), nrow=11)
+P.K <- matrix(rep(p.k(0:10, 0.2), each=10+1), nrow=10+1)
+lie0.2idiot <- rowSums(P.K*mat.idiotLiar*LIE)/rowSums(P.K*mat.idiotLiar)
+detect0.2idiot <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.2, lie0.2idiot)
+
+P.K <- matrix(rep(p.k(0:10, 0.5), each=10+1), nrow=10+1)
+lie0.5idiot <- rowSums(P.K*mat.idiotLiar*LIE)/rowSums(P.K*mat.idiotLiar)
+detect0.5idiot <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, lie0.5idiot)
+
+P.K <- matrix(rep(p.k(0:10, 0.8), each=10+1), nrow=10+1)
+lie0.8idiot <- rowSums(P.K*mat.idiotLiar*LIE)/rowSums(P.K*mat.idiotLiar)
+detect0.8idiot <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.8, lie0.8idiot)
+
+detect.respondToIdiot <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           ksay=rep(0:10,3),
+           bs=c(detect0.2idiot, detect0.5idiot, detect0.8idiot)) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=ksay, y=bs, colour=probabilityRed.txt)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  # scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  # scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_x_continuous("Reported Marbles", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff)+
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.text.y = element_text(margin=margin(0,-1,0,-2.5)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.respondToIdiot
+#ggsave("img/modelRespondToIdiot_detect.png", detect.respondToIdiot, height=8, width=7.5)           
+
+avgPropBS <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  summarise(propBS = sum(callBS == "True")/n()) %>%
+  .$propBS
+bonddepaulo <- 1-.56
+vrij <- 1 - .615
+lie.respondToIdiot <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           k=rep(0:10,3),
+           ksay=c(exp.ksay(0.2, rep(bonddepaulo, 11)),
+                  exp.ksay(0.5, rep(bonddepaulo, 11)),
+                  exp.ksay(0.8, rep(bonddepaulo, 11)))) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=k, y=ksay, colour=probabilityRed.txt)) +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=2, size=ablineSize) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  # ggtitle("Uniform + Moral") +
+  ggtitle("Uniform Opponent") +
+  # scale_x_continuous("", labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  # scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_x_continuous("True Marbles", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.text.y = element_text(margin=margin(0,-1,0,3.8)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.respondToIdiot
+#ggsave("img/modelRespondToIdiot_lie.png", lie.respondToIdiot, height=8, width=7.5)  
+```
+
+## Response to Idiot Liar/Lie Detector Without Morality
+
+```{r}
+moral = 0
+Expt = 4
+detect0.2idiot.nomoral <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.2, lie0.2idiot)
+detect0.5idiot.nomoral <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, lie0.5idiot)
+detect0.8idiot.nomoral <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.8, lie0.8idiot)
+
+detect.respondToIdiot.nomoral <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           ksay=rep(0:10,3),
+           bs=c(detect0.2idiot, detect0.5idiot, detect0.8idiot)) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=ksay, y=bs, colour=probabilityRed.txt)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  # scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  # scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_x_continuous("Reported Marbles", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff)+
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.text.y = element_text(margin=margin(0,-1,0,-2.5)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.respondToIdiot.nomoral
+ggsave("img/modelRespondToIdiot_detect_nomoral.png", detect.respondToIdiot.nomoral, height=8, width=7.5)           
+
+lie.respondToIdiot.nomoral <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           k=rep(0:10,3),
+           ksay=c(exp.ksay(0.2, rep(bonddepaulo, 11)),
+                  exp.ksay(0.5, rep(bonddepaulo, 11)),
+                  exp.ksay(0.8, rep(bonddepaulo, 11)))) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=k, y=ksay, colour=probabilityRed.txt)) +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=2, size=ablineSize) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  # ggtitle("Uniform + Moral") +
+  ggtitle("Random Opponent") +
+  # scale_x_continuous("", labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  # scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_x_continuous("True Marbles", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.text.y = element_text(margin=margin(0,-1,0,3.8)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.respondToIdiot.nomoral
+ggsave("img/modelRespondToIdiot_lie_nomoral.png", lie.respondToIdiot.nomoral, height=8, width=7.5)  
+moral = lieMoral
+```
+
+```{r}
+lie.results_expt4 <- bs.final %>%
+  filter(roleCurrent == "bullshitter", expt=="expt4") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, drawnRed) %>%
+  summarise(mean = mean(reportedDrawn),
+            sd = sd(reportedDrawn),
+            se = sd/sqrt(n()),
+            n=n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=drawnRed, y=mean, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=2, size=ablineSize) +
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.3) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  ggtitle("Red Utility") +
+  scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values = condColors.diff) +
+  scale_fill_manual(values = condColors.diff) +
+  guides(fill=guide_legend(title="", override.aes=list(size=2.5)), colour="none") +
+  theme_minimal() +
+  theme(legend.position="none",
+        legend.text = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.results_expt4
+ggsave("img/results_lie_expt4.png", lie.results_expt4, height=2.5, width=3)
+
+detect.results_expt4 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt4") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, expt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_ribbon(aes(ymin=prop-se, ymax=prop+se), alpha=0.3) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  scale_x_continuous("", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values = condColors.diff, guide="none") +
+  scale_fill_manual(values = condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.results_expt4
+ggsave("img/results_detect_expt4.png", detect.results_expt4, height=2.5, width=3)
+```
+
+```{r}
+lie.results_expt5 <- bs.final %>%
+  filter(roleCurrent == "bullshitter", expt=="expt5") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, drawnRed) %>%
+  summarise(mean = mean(reportedDrawn),
+            sd = sd(reportedDrawn),
+            se = sd/sqrt(n()),
+            n=n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=drawnRed, y=mean, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=2, size=ablineSize) +
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.3) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  ggtitle("Blue Utility") +
+  scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values = condColors.diff) +
+  scale_fill_manual(values = condColors.diff) +
+  guides(fill=guide_legend(title="", override.aes=list(size=2.5)), colour="none") +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.results_expt5 + theme(legend.position="none")
+ggsave("img/results_lie_expt5.png", lie.results_expt5, height=2.5, width=3)
+
+detect.results_expt5 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt5") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_ribbon(aes(ymin=prop-se, ymax=prop+se), alpha=0.3) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  scale_x_continuous("", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values = condColors.diff, guide="none") +
+  scale_fill_manual(values = condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.results_expt5
+ggsave("img/results_detect_expt5.png", detect.results_expt5, height=2.5, width=3)
+```
+
+# Combine Graphs
+```{r}
+legend <- get_legend(lie.results_expt5)
+
+lieplots <- plot_grid(#lie.idiot,
+                      lie.respondToIdiot.nomoral,
+                      #lie.respondToIdiot,
+                      #lie.respondToHumanData,
+                      lie.recurse.nomoral,
+                      lie.recurse.moral,
+                      lie.results_expt4,
+                      lie.results_expt5 + theme(legend.position="none"), 
+                      nrow=1,
+                      rel_widths=c(10.92, 10, 10, 10, 10)) #10.72 with 4 panels
+
+detectplots <- plot_grid(#detect.idiot, 
+                         detect.respondToIdiot.nomoral,
+                         #detect.respondToIdiot, 
+                         #detect.respondToHumanData, 
+                         detect.recurse.nomoral, 
+                         detect.recurse.moral, 
+                         detect.results_expt4,
+                         detect.results_expt5, 
+                         nrow=1,
+                         rel_widths=c(10.92, 10, 10, 10, 10))
+
+liarLabel <- ggdraw() +
+  draw_label("Liar", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270)
+
+lierow <- plot_grid(lieplots, liarLabel, nrow=1, rel_widths=c(96, 4))
+
+detectorLabel <- ggdraw() +
+  draw_label("Detector", fontface="bold", size=12, y=0.99, x=0.5, hjust=0, angle=270)
+
+detectrow <- plot_grid(detectplots, detectorLabel, nrow=1, rel_widths=c(96, 4))
+
+allplots <- plot_grid(lierow, 
+                      detectrow, 
+                      nrow=2,
+                      #rel_heights=c(0.53, 0.47))
+                      rel_heights=c(0.538, 0.462))
+
+withLegend <- ggdraw() +
+  draw_plot(allplots) +
+  draw_plot(legend, x=0.415, y=0.16)
+
+# ggsave("img/allPredictions_wExpt5.pdf", 
+#        withLegend, 
+#        units="cm", height=8.5, width=17.8)
+
+withLegend
+ggsave("img/allPredictions_wExpt5.pdf", 
+       withLegend, 
+       units="cm", height=7.3, width=17.8)
+
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent == "bullshitter", expt=="expt4") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, drawnRed, reportedDrawn) %>%
+  summarise(n=n())
+
+p <- plot_ly(z = ~volcano) %>% add_surface()
+```
+
+
+
+
+
+
+
+
+# Model vs Human Comparison
+
+```{r}
+modelColors = c("random opponent"="chocolate2",
+                "uniform+aversion"="firebrick3",
+                "recursive "="goldenrod1", 
+                "recursive+aversion"="forestgreen") #breaks if no space after "recursive"
+
+pShapes = c("p = 0.2" = 21,
+            "p = 0.5" = 22,
+            "p = 0.8" = 24
+)
+
+prob_to_logit <- function(p){
+  log(p/(1-p))
+}
+
+modelLieComp <- df.unif %>%
+  filter(role=="Liar", mor==lieMoral) %>%
+  mutate(model = "recursive+aversion", 
+         k = ks,
+         mean.model = val,
+         se.model = se) %>%
+  select(role, model, p, k, expt, mean.model, se.model)
+
+modelDetectComp <- df.unif %>%
+  filter(role=="Detector", mor==detectMoral) %>%
+  mutate(model = "recursive+aversion", 
+         k = ks,
+         mean.model = val,
+         se.model = se) %>%
+  select(role, model, p, k, expt, mean.model, se.model)
+
+rationalLieComp <- df.unif %>%
+  filter(role=="Liar", mor==0) %>%
+  mutate(model = "recursive ", 
+         k = ks,
+         mean.model = val,
+         se.model = se) %>%
+  select(role, model, p, k, expt, mean.model, se.model)
+
+rationalDetectComp <- df.unif %>%
+  filter(role=="Detector", mor==0) %>%
+  mutate(model = "recursive ", 
+         k = ks,
+         mean.model = val,
+         se.model = se) %>%
+  select(role, model, p, k, expt, mean.model, se.model)
+
+Expt = 4
+moral = lieMoral
+idiotLieComp <- data.frame(role = "Liar",
+                           model = "uniform+aversion",
+                           p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                           k=rep(0:10,3),
+                           expt = "expt4",
+                           mean.model=c(exp.ksay(0.2, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.5, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.8, rep(bonddepaulo, 11))),
+                           se.model = NA)
+
+idiotDetectComp <- data.frame(role = "Detector",
+                              model = "uniform+aversion",
+                              p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                              k=rep(0:10,3),
+                              expt = "expt4",
+                              mean.model=c(detect0.2idiot, 
+                                           detect0.5idiot, 
+                                           detect0.8idiot),
+                              se.model = NA)
+
+moral = 0
+idiotLieComp.nomoral <- data.frame(role = "Liar",
+                           model = "random opponent",
+                           p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                           k=rep(0:10,3),
+                           expt = "expt4",
+                           mean.model=c(exp.ksay(0.2, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.5, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.8, rep(bonddepaulo, 11))),
+                           se.model = NA)
+
+idiotDetectComp.nomoral <- data.frame(role = "Detector",
+                              model = "random opponent",
+                              p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                              k=rep(0:10,3),
+                              expt = "expt4",
+                              mean.model=c(detect0.2idiot.nomoral, 
+                                           detect0.5idiot.nomoral, 
+                                           detect0.8idiot.nomoral),
+                              se.model = NA)
+
+
+Expt = 5
+moral = lieMoral
+P.K <- matrix(rep(p.k(0:10, 0.2), each=10+1), nrow=10+1)
+lie0.2idiot <- rowSums(P.K*mat.idiotLiar*LIE)/rowSums(P.K*mat.idiotLiar)
+detect0.2idiot_expt5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.2, lie0.2idiot)
+
+P.K <- matrix(rep(p.k(0:10, 0.5), each=10+1), nrow=10+1)
+lie0.5idiot <- rowSums(P.K*mat.idiotLiar*LIE)/rowSums(P.K*mat.idiotLiar)
+detect0.5idiot_expt5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, lie0.5idiot)
+
+P.K <- matrix(rep(p.k(0:10, 0.8), each=10+1), nrow=10+1)
+lie0.8idiot <- rowSums(P.K*mat.idiotLiar*LIE)/rowSums(P.K*mat.idiotLiar)
+detect0.8idiot_expt5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.8, lie0.8idiot)
+
+idiotLieComp_expt5 <- data.frame(role = "Liar",
+                           model = "uniform+aversion",
+                           p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                           k=rep(0:10,3),
+                           expt = "expt5",
+                           mean.model=c(exp.ksay(0.2, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.5, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.8, rep(bonddepaulo, 11))),
+                           se.model = NA)
+
+idiotDetectComp_expt5 <- data.frame(role = "Detector",
+                              model = "uniform+aversion",
+                              p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                              k=rep(0:10,3),
+                              expt = "expt5",
+                              mean.model=c(detect0.2idiot_expt5,
+                                           detect0.5idiot_expt5,
+                                           detect0.8idiot_expt5),
+                              se.model = NA)
+
+moral = 0
+detect0.2idiot.nomoral_expt5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.2, lie0.2idiot)
+detect0.5idiot.nomoral_expt5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, lie0.5idiot)
+detect0.8idiot.nomoral_expt5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.8, lie0.8idiot)
+
+idiotLieComp.nomoral_expt5 <- data.frame(role = "Liar",
+                           model = "random opponent",
+                           p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                           k=rep(0:10,3),
+                           expt = "expt5",
+                           mean.model=c(exp.ksay(0.2, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.5, rep(bonddepaulo, 11)),
+                                  exp.ksay(0.8, rep(bonddepaulo, 11))),
+                           se.model = NA)
+
+idiotDetectComp.nomoral_expt5 <- data.frame(role = "Detector",
+                              model = "random opponent",
+                              p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+                              k=rep(0:10,3),
+                              expt = "expt5",
+                              mean.model=c(detect0.2idiot.nomoral_expt5,
+                                           detect0.5idiot.nomoral_expt5,
+                                           detect0.8idiot.nomoral_expt5),
+                              se.model = NA)
+
+idiotLieComp <- bind_rows(idiotLieComp, idiotLieComp_expt5)
+idiotDetectComp <- bind_rows(idiotDetectComp, idiotDetectComp_expt5)
+idiotLieComp.nomoral <- bind_rows(idiotLieComp.nomoral, idiotLieComp.nomoral_expt5)
+idiotDetectComp.nomoral <- bind_rows(idiotDetectComp.nomoral, idiotDetectComp.nomoral_expt5)
+
+modelComp <- bind_rows(idiotLieComp, idiotDetectComp, idiotLieComp.nomoral, idiotDetectComp.nomoral, modelLieComp, modelDetectComp, rationalLieComp, rationalDetectComp)
+
+humanCompLie <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(k = drawnRed,
+         p = probabilityRed) %>%
+  group_by(p, k, expt, roleCurrent) %>%
+  summarise(mean.human = mean(reportedDrawn), #not sure if this is kosher, but putting lying on same scale as detecting
+            sd = sd(reportedDrawn),
+            se.human = sd/sqrt(n()),
+            n=n()) %>%
+  mutate(role = "Liar") %>%
+  select(role, p, k, expt, mean.human, se.human)
+humanCompDetect <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  mutate(k = reportedDrawn,
+         p = probabilityRed) %>%
+  group_by(p, k, expt, roleCurrent) %>%
+  summarise(mean.human = (sum(callBS == "True")+1)/(n()+2),
+            se.human = sqrt((mean.human*(1-mean.human)/n())),
+            n=n()) %>%
+  mutate(role = "Detector") %>%
+  select(role, p, k, expt, mean.human, se.human)
+humanComp <- bind_rows(humanCompLie, humanCompDetect)
+
+
+modelVsHuman <- left_join(modelComp, humanComp, by=c("role", "expt", "p", "k")) %>%
+  mutate(model = factor(model, levels=c("random opponent", "uniform+aversion", "recursive ", "recursive+aversion")),
+         mean.model.logit = ifelse(role=="Detector", prob_to_logit(mean.model), mean.model),
+         mean.human.logit = ifelse(role=="Detector", prob_to_logit(mean.human), mean.human))
+
+modelVsHuman %>%
+  arrange(p, role, k, expt) %>%
+  head(10)
+
+lieComp <- modelVsHuman %>%
+  filter(role=="Liar", model!="uniform+aversion", expt=="expt4") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=model, shape=p.txt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_point(size=3) +
+  #geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1) +
+  #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.1) +
+  scale_x_continuous("Model", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("Human", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=modelColors) +
+  scale_shape_manual(values=pShapes) +
+  guides(shape=guide_legend(order=1, title=""),
+         fill=guide_legend(order=0, title="", override.aes=list(shape=21))) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=10),
+        axis.text = element_text(size=9),
+        axis.text.y = element_text(margin=margin(0,0,0,5)),
+        axis.line = element_line(size=1, colour=axisLineColour))
+
+detectComp <- modelVsHuman %>%
+  filter(role=="Detector", model!="uniform+aversion", expt=="expt4") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=model, shape=p.txt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_point(size=3) +
+  #geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02) +
+  #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.02) +
+  scale_x_continuous("Model", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("Human", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=modelColors) +
+  scale_shape_manual(values=pShapes) +
+  # guides(shape=guide_legend(title="priors"),
+  #        fill=guide_legend(override.aes=list(shape=21))) +
+  guides(shape=guide_legend(order=1, title=""),
+         fill=guide_legend(order=0, title="", override.aes=list(shape=21))) +
+  theme_minimal() +
+  theme(legend.key.size = unit(0.34, 'cm'),
+        legend.text = element_text(size=7),
+        legend.box = "horizontal",
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=10),
+        axis.text = element_text(size=9),
+        axis.text.y = element_text(margin=margin(0,-0.5,0,-2)),
+        axis.line = element_line(size=1, colour=axisLineColour))
+
+legendComp <- get_legend(detectComp)
+lieCompLabel <- ggdraw() +
+  draw_label("Liar", fontface="bold", size=12, y=0.95, x=0.4, hjust=0, angle=270)
+
+detectCompLabel <- ggdraw() + 
+  draw_label("Detector", fontface="bold", size=12, y=0.95, x=0.4, hjust=0, angle=270)
+
+bothComp <- plot_grid(lieComp, lieCompLabel, 
+                      detectComp + theme(legend.position = "none"), detectCompLabel, ncol=2, rel_widths=c(95,5))
+
+comparison <- ggdraw() +
+  draw_plot(bothComp) +
+  draw_plot(legendComp, x=-0.08, y=0.45)
+  #draw_plot(legendComp, x=-0.18, y=0.35)
+comparison
+ggsave("img/modelComparison.pdf", comparison, units="cm", height=15, width=8.7)
+```
+
+## Compute R^2
+
+```{r}
+# by role and model and expt
+modelVsHuman %>%
+  group_by(role, model, expt) %>%
+  summarise(r = cor(mean.model, mean.human),
+            r.squared = r^2,
+            p = cor.test(mean.model, mean.human)$p.value)
+
+# by role and model
+modelVsHuman %>%
+  group_by(role, model) %>%
+  summarise(r = cor(mean.model, mean.human),
+            r.squared = r^2,
+            p = cor.test(mean.model, mean.human)$p.value)
+
+# collapsing over role
+modelVsHuman %>%
+  group_by(model) %>%
+  summarise(r = cor(mean.model, mean.human),
+            r.squared = r^2,
+            p = cor.test(mean.model, mean.human)$p.value)
+```
+
+# Model Comparison with Panels for Each Model
+```{r}
+lieComp_facet <- modelVsHuman %>%
+  filter(model != "uniform+moral", expt == "expt4", role == "Liar") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, colour=p.txt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_point(size=1) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1) +
+  #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.1) +
+  scale_x_continuous("Model", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Human", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  facet_grid(model~.) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=10),
+        axis.text = element_text(size=9),
+        axis.text.y = element_text(margin=margin(0,0,0,5))) +
+  annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=Inf, colour=axisLineColour, size=2) +
+  annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, colour=axisLineColour, size=2)
+ggsave("img/lieComparison_facet.png", lieComp_facet, height=7.75, width=3.5)
+
+
+detectComp_facet <- modelVsHuman %>%
+  filter(model != "uniform+moral", expt == "expt4", role == "Detector") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, colour=p.txt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_point(size=1) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02) +
+  #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.02) +
+  scale_x_continuous("Model", limits=c(0,1), expand=c(0,0)) +
+  scale_y_continuous("Human", limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  # guides(colour=guide_legend(override.aes=list(shape=21))) +
+  guides(colour=guide_legend(title="")) +
+  facet_grid(model~.) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        #legend.key.size = unit(0.34, 'cm'),
+        #legend.text = element_text(size=7),
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=10),
+        axis.text = element_text(size=9),
+        axis.text.y = element_text(margin=margin(0,-0.5,0,-2))) +
+  annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=Inf, colour=axisLineColour, size=2) +
+  annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, colour=axisLineColour, size=2)
+ggsave("img/detectComparison_facet.png", detectComp_facet, height=7.75, width=3.5)
+```
+
+# Model Predictions Feeding in Human Results
+
+## Lie Detector Behavior from Lying Results
+
+```{r}
+# "template" for tidyr complete() function
+template <- data.frame(expt = NA,
+                       probabilityRed = rep(0,11),
+                       drawnRed = rep(0,11),
+                       reportedDrawn = 0:10,
+                       n = rep(0,11))
+
+liePropsDF <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  group_by(expt, probabilityRed, drawnRed, reportedDrawn) %>%
+  summarise(n=n()) 
+
+liePropsDF <- bind_rows(template,liePropsDF) %>%
+  complete(expt, probabilityRed, drawnRed, reportedDrawn, fill=list(n=0)) %>%
+  filter(!is.na(expt), probabilityRed != 0) %>%
+  group_by(expt, probabilityRed, drawnRed) %>%
+  mutate(total = sum(n),
+         proportion = n / total) %>%
+  filter(expt == "expt4")
+
+LIE <- 1-diag(numMarbles+1)
+# equivalent to output of p.L_ksay.k.r
+df0.2 <- liePropsDF %>%
+  filter(probabilityRed == 0.2)
+mat0.2 <- matrix(df0.2$proportion, nrow=11)
+# output p_t.ksay.r
+P.K <- matrix(rep(p.k(0:numMarbles, 0.2), each=numMarbles+1), nrow=numMarbles+1)
+lie0.2 <- rowSums(P.K*mat0.2*LIE)/rowSums(P.K*mat0.2)
+# output p.D_bs.ksay.r
+detect0.2 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.2, lie0.2)
+
+df0.5 <- liePropsDF %>%
+  filter(probabilityRed == 0.5)
+mat0.5 <- matrix(df0.5$proportion, nrow=11)
+P.K <- matrix(rep(p.k(0:10, 0.5), each=10+1), nrow=10+1)
+lie0.5 <- rowSums(P.K*mat0.5*LIE)/rowSums(P.K*mat0.5)
+detect0.5 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, lie0.5)
+
+df0.8 <- liePropsDF %>%
+  filter(probabilityRed == 0.8)
+mat0.8 <- matrix(df0.8$proportion, nrow=11)
+P.K <- matrix(rep(p.k(0:10, 0.8), each=10+1), nrow=10+1)
+lie0.8 <- rowSums(P.K*mat0.8*LIE)/rowSums(P.K*mat0.8)
+detect0.8 <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.8, lie0.8)
+
+detect.respondToHumanData <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           ksay=rep(0:10,3),
+           bs=c(detect0.2, detect0.5, detect0.8)) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=ksay, y=bs, colour=probabilityRed.txt)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff)+
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.respondToHumanData 
+ggsave("img/modelRespondToData_detect.png", detect.respondToHumanData, height=8, width=7.5)
+```
+
+## Liar Behavior from Lie Detector Results
+
+```{r}
+bsPropsDF <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt4") %>%
+  group_by(probabilityRed, reportedDrawn) %>%
+  summarise(count = sum(callBS == "True"),
+            total = n(),
+            propBS = count/total) %>%
+  select(probabilityRed, reportedDrawn, propBS) %>%
+  mutate(lie = exp.ksay(probabilityRed, propBS))
+
+lie.respondToHumanData <- bsPropsDF %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  ggplot(aes(x=reportedDrawn, y=lie, colour=probabilityRed.txt)) +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=2, size=ablineSize) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  ggtitle("Input: Human") +
+  scale_x_continuous("", labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.respondToHumanData
+ggsave("img/modelRespondToData_lie.png", lie.respondToHumanData, height=8, width=7.5)
+```
+
+
+
+## Uniform Liar + Detector
+
+```{r}
+lie.idiot <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           k=rep(0:10,3),
+           ksay=sum(0:10 * 1/11)) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=k, y=ksay, colour=probabilityRed.txt)) +
+  geom_abline(intercept = 0, slope = 1, colour="darkgray", linetype=2, size=ablineSize) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  ggtitle("Uniform Opponent") +
+  scale_x_continuous("True Marbles", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.y = element_text(margin=margin(0,0,0,25.5)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+lie.idiot
+ggsave("img/modelIdiot_lie.png", lie.idiot, height=8, width=7.5)     
+
+detect.idiot <- data.frame(p=c(rep(0.2,11), rep(0.5,11), rep(0.8,11)),
+           ksay=rep(0:10,3),
+           bs=avgPropBS) %>%
+  mutate(probabilityRed.txt = paste("p =", p)) %>%
+  ggplot(aes(x=ksay, y=bs, colour=probabilityRed.txt)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  scale_x_continuous("Reported Marbles", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff)+
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+detect.idiot
+ggsave("img/modelIdiot_detect.png", detect.idiot, height=8, width=7.5)     
+```
+
+
+```{r}
+# with just morality model
+modelLieComp <- df.unif %>%
+  filter(role=="Liar", mor==lieMoral) %>%
+  mutate(model = "moral", 
+         k = ks,
+         mean.model = val/10,
+         se.model = se/10) %>%
+  select(role, model, p, k , mean.model, se.model)
+
+modelDetectComp <- df.unif %>%
+  filter(role=="Detector", mor==detectMoral) %>%
+  mutate(model = "moral", 
+         k = ks,
+         mean.model = val,
+         se.model = se) %>%
+  select(role, model, p, k , mean.model, se.model)
+
+modelComp <- bind_rows(modelLieComp, modelDetectComp)
+
+humanCompLie <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(k = drawnRed,
+         p = probabilityRed) %>%
+  group_by(p, k, roleCurrent) %>%
+  summarise(mean.human = mean(reportedDrawn)/10, #not sure if this is kosher, but putting lying on same scale as detecting
+            sd = sd(reportedDrawn)/10,
+            se.human = sd/sqrt(n()),
+            n=n()) %>%
+  mutate(role = "Liar") %>%
+  select(role, p, k , mean.human, se.human)
+humanCompDetect <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector") %>%
+  mutate(k = reportedDrawn,
+         p = probabilityRed) %>%
+  group_by(p, k, roleCurrent) %>%
+  summarise(mean.human = (sum(callBS == "True")+1)/(n()+2),
+            se.human = sqrt((mean.human*(1-mean.human)/n())),
+            n=n()) %>%
+  mutate(role = "Detector") %>%
+  select(role, p, k , mean.human, se.human)
+humanComp <- bind_rows(humanCompLie, humanCompDetect)
+
+modelVsHuman <- left_join(modelComp, humanComp, by=c("role", "p", "k"))
+
+comp <- modelVsHuman %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, colour=p.txt, shape=role)) +
+  geom_point() +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02) +
+  #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.02) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  scale_x_continuous("Model", limits=c(0,1)) +
+  scale_y_continuous("Human", limits=c(0,1)) +
+  scale_colour_manual(values = condColors.diff) +
+  guides(colour=guide_legend(title="")) +
+  facet_grid(role~.) +
+  theme_minimal() +
+  theme(axis.title = element_text(size=18),
+        axis.text = element_text(size=18))
+comp
+```
+
+
+```{r}
+df.unif %>%
+  filter(role=="Liar", mor==lieMoral, expt=="expt5") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_abline(size=ablineSize, intercept = 0, slope = 1, colour="darkgray", linetype=2) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  ggtitle("Recursive") +
+  scale_x_continuous("", labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+ggsave("img/modelRecurse_lie_expt5.png", height=2.5, width=3)
+
+df.unif %>%
+  filter(role=="Detector", mor==detectMoral, expt=="expt5") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+ggsave("img/modelRecurse_detect_expt5.png", height=2.5, width=3)
+```
+
+```{r}
+df.unif %>%
+  filter(role=="Detector", mor==detectMoral, expt=="expt4") %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val, colour=p)) +
+  geom_line(size=lineSize, alpha=alphaLine) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values=condColors.diff) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+ggsave("img/modelRecurse_detect_expt4.png", height=2.5, width=3)
+
+```
+
+```{r}
+df.unif %>%
+  filter(role=="Liar", mor==0, expt=="expt4", p==0.5) %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val)) +
+  geom_line(colour="purple3", size=5) +
+  geom_abline(size=4, intercept = 0, slope = 1, colour="darkgray", linetype=2, lwd=1) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10)) +
+  scale_y_continuous("", limits=c(0,10), breaks=c(0,2,4,6,8,10)) +
+  theme_minimal() +
+  theme(axis.text = element_text(size=24))
+ggsave("img/modelRecurse_lie_expt1.png", height=5, width=7)
+
+df.unif %>%
+  filter(role=="Detector", mor==0, expt=="expt4", p==0.5) %>%
+  mutate(p = paste("p =", p)) %>%
+  ggplot(aes(x=ks, y=val)) +
+  geom_line(colour="purple3", size=5) +
+  scale_x_continuous("", breaks=c(0,2,4,6,8,10)) +
+  scale_y_continuous("", limits=c(0,1)) +
+  theme_minimal() +
+  theme(axis.text = element_text(size=24))
+ggsave("img/modelRecurse_detect_expt1.png", height=5, width=7)
+```
+
+
+## MLE Analysis
+
+
+```{r warning=FALSE}
+logitToProb <- function(logit){
+  exp(logit) / (1+exp(logit))
+}
+
+probToLogit <- function(prob){
+  log(prob / (1 - prob))
+}
+
+quadratic <- function(x, a, b, c){
+  a*(x-b)^2+c
+}
+
+logisticModel <- function(x, a, b, c){
+  logitToProb(pmin(10, pmax(-10, quadratic(x, a, b, c))))
+}
+
+lapsePlusLogistic <- function(x, a, b, c, alph){
+  alph2 = logitToProb(alph)
+  a = exp(a)
+  alph2/2 + (1-alph2)*logisticModel(x, a, b, c)
+}
+
+loglik <- function(x, y, a, b, c, alph){
+  sum(
+    dbinom(y, 1, lapsePlusLogistic(x, a, b, c, alph), log=T)
+  )
+}
+
+brutefit <- function(tmp){
+  nLL <- function(a, b, c, alph){
+    -loglik(tmp$reportedDrawn, tmp$callBS, a, b, c, alph)+
+      (a-1)^2+
+      (b-5)^2+
+      c^2+
+      (alph+2)^2
+  }
+
+  iter = 0
+  fits = NULL
+  fit = NULL
+  while(is.null(fits)){
+    try(fit <- summary(mle(nLL,
+                           start=list(a=rnorm(1, 0, 3),
+                                      b=rnorm(1, 0, 3),
+                                      c=rnorm(1, 0, 3),
+                                      alph=rnorm(1, -2, 3)), method = 'BFGS'), TRUE))
+    iter = iter+1
+
+    if(! is.null(fit)){
+      fits <- c(tmp$probabilityRed[1], -0.5*fit@m2logL, length(tmp$reportedDrawn), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
+    } else {
+      if(iter>100){
+        fits <- c(tmp$probabilityRed[1], -9999, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+      }
+    }
+  }
+  names(fits) <- c("probabilityRed", "logL", "n", "est.a", "est.b", "est.c", "est.alph", "se.a", "se.b", "se.c", "se.alph")
+  return(fits)
+}
+
+ps = c(-0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -5, -0.5)
+names(ps) <- c("min_a", "max_a", "min_b", "max_b", "min_c", "max_c", "min_alph", "max_alph")
+
+humanDetect_expt4 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt4") %>%
+  mutate(callBS = ifelse(callBS == "False", FALSE, TRUE),
+         avgRed = probabilityRed * 10,
+         probabilityRed.f = relevel(as.factor(probabilityRed), ref="0.5"))
+quadr.fits_expt4 <- data.frame(do.call(rbind, by(humanDetect_expt4, humanDetect_expt4$probabilityRed.f, brutefit)))
+print(paste("Failed quadratic fits:", sum(quadr.fits_expt4$logL==-9999)))
+
+
+quadr.est_expt4 <- quadr.fits_expt4 %>%
+  select(1:7) %>%
+  gather("variable", "estimate", 4:7) %>%
+  mutate(variable = gsub("est.", "", variable))
+quadr.se_expt4 <- quadr.fits_expt4 %>%
+  select(-c(4:7)) %>%
+  gather("variable", "std.err", 4:7) %>%
+  mutate(variable = gsub("se.", "", variable))
+quadr.summ_expt4 <- left_join(quadr.est_expt4, quadr.se_expt4, by=c("probabilityRed","logL","n","variable"))
+quadr.summ_expt4 %>%
+  mutate(z.value = estimate/std.err,
+         p.value = ifelse(pnorm(-abs(z.value)) > .000001, pnorm(-abs(z.value)), "<.000001")) %>%
+  arrange(probabilityRed, variable)
+
+# y = a(x-b)^2 + c
+b_0.2_expt4 <- quadr.summ_expt4 %>%
+  filter(variable == "b", probabilityRed == 0.2)
+b_0.5_expt4 <- quadr.summ_expt4 %>%
+  filter(variable == "b", probabilityRed == 0.5)
+b_0.8_expt4 <- quadr.summ_expt4 %>%
+  filter(variable == "b", probabilityRed == 0.8)
+
+# one sided 2 sample t test with pooled variance
+wald.z.test <- function(m1, sd1, m2, sd2){
+  z <- (m1 - m2) / sqrt(sd1^2 + sd2^2)
+  p <- pnorm(abs(z), lower.tail=F)
+  return(data.frame(m1, sd1, m2, sd2, z, p))
+}
+
+wald.z.test(b_0.5_expt4$estimate, b_0.5_expt4$std.err, b_0.2_expt4$estimate, b_0.2_expt4$std.err)
+wald.z.test(b_0.5_expt4$estimate, b_0.5_expt4$std.err, b_0.8_expt4$estimate, b_0.8_expt4$std.err)
+
+quadr.plot_expt4 <- data.frame(x=rep(0:10,3), 
+           p=as.factor(c(rep(0.2,11), rep(0.5,11), rep(0.8,11))),
+           a=c(rep(quadr.fits_expt4$est.a[quadr.fits_expt4$probabilityRed==0.2],11),
+               rep(quadr.fits_expt4$est.a[quadr.fits_expt4$probabilityRed==0.5],11),
+               rep(quadr.fits_expt4$est.a[quadr.fits_expt4$probabilityRed==0.8],11)),
+           b=c(rep(quadr.fits_expt4$est.b[quadr.fits_expt4$probabilityRed==0.2],11),
+               rep(quadr.fits_expt4$est.b[quadr.fits_expt4$probabilityRed==0.5],11),
+               rep(quadr.fits_expt4$est.b[quadr.fits_expt4$probabilityRed==0.8],11)),
+           c=c(rep(quadr.fits_expt4$est.c[quadr.fits_expt4$probabilityRed==0.2],11),
+               rep(quadr.fits_expt4$est.c[quadr.fits_expt4$probabilityRed==0.5],11),
+               rep(quadr.fits_expt4$est.c[quadr.fits_expt4$probabilityRed==0.8],11)),
+           alph=c(rep(quadr.fits_expt4$est.alph[quadr.fits_expt4$probabilityRed==0.2],11),
+               rep(quadr.fits_expt4$est.alph[quadr.fits_expt4$probabilityRed==0.5],11),
+               rep(quadr.fits_expt4$est.alph[quadr.fits_expt4$probabilityRed==0.8],11))) %>%
+  mutate(prob=lapsePlusLogistic(x, a, b, c, alph))
+ggplot(quadr.plot_expt4, aes(x=x, y=prob, colour=p)) +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1))
+ggsave("img/quadraticFit_expt4.png")
+
+exptDetect_expt4 <- bs.final %>%
+  filter(expt=="expt4", roleCurrent == "bullshitDetector") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  mutate(fit="experiment")
+quadr.plot2_expt4 <- data.frame(probabilityRed.txt = paste("p =", quadr.plot_expt4$p),
+                          reportedDrawn = quadr.plot_expt4$x,
+                          prop = quadr.plot_expt4$prob,
+                          se = NA,
+                          n = NA,
+                          fit = "model")
+quadr.plot_full_expt4 <- bind_rows(exptDetect_expt4, quadr.plot2_expt4)
+ggplot(data=quadr.plot_full_expt4, aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, linetype=fit)) +
+  geom_point(data=filter(quadr.plot_full_expt4, fit=="experiment")) +
+  geom_line() +
+  geom_errorbar(data=filter(quadr.plot_full_expt4, fit=="experiment"), aes(x=reportedDrawn, colour=probabilityRed.txt, min=prop-se, max=prop+se), width=.3) +
+  scale_x_continuous("Reported Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+ggsave("img/fit_expt_model_expt4.png")
+```
+
+```{r}
+humanDetect_expt5 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt5") %>%
+  mutate(callBS = ifelse(callBS == "False", FALSE, TRUE),
+         avgRed = probabilityRed * 10,
+         probabilityRed.f = relevel(as.factor(probabilityRed), ref="0.5"))
+quadr.fits_expt5 <- data.frame(do.call(rbind, by(humanDetect_expt5, humanDetect_expt5$probabilityRed.f, brutefit)))
+print(paste("Failed quadratic fits:", sum(quadr.fits_expt5$logL==-9999)))
+
+
+quadr.est_expt5 <- quadr.fits_expt5 %>%
+  select(1:7) %>%
+  gather("variable", "estimate", 4:7) %>%
+  mutate(variable = gsub("est.", "", variable))
+quadr.se_expt5 <- quadr.fits_expt5 %>%
+  select(-c(4:7)) %>%
+  gather("variable", "std.err", 4:7) %>%
+  mutate(variable = gsub("se.", "", variable))
+quadr.summ_expt5 <- left_join(quadr.est_expt5, quadr.se_expt5, by=c("probabilityRed","logL","n","variable"))
+quadr.summ_expt5 %>%
+  mutate(z.value = estimate/std.err,
+         p.value = ifelse(pnorm(-abs(z.value)) > .000001, pnorm(-abs(z.value)), "<.000001")) %>%
+  arrange(probabilityRed, variable)
+
+# y = a(x-b)^2 + c
+b_0.2_expt5 <- quadr.summ_expt5 %>%
+  filter(variable == "b", probabilityRed == 0.2)
+b_0.5_expt5 <- quadr.summ_expt5 %>%
+  filter(variable == "b", probabilityRed == 0.5)
+b_0.8_expt5 <- quadr.summ_expt5 %>%
+  filter(variable == "b", probabilityRed == 0.8)
+
+wald.z.test(b_0.5_expt5$estimate, b_0.5_expt5$std.err, b_0.2_expt5$estimate, b_0.2_expt5$std.err)
+wald.z.test(b_0.5_expt5$estimate, b_0.5_expt5$std.err, b_0.8_expt5$estimate, b_0.8_expt5$std.err)
+
+quadr.plot_expt5 <- data.frame(x=rep(0:10,3), 
+           p=as.factor(c(rep(0.2,11), rep(0.5,11), rep(0.8,11))),
+           a=c(rep(quadr.fits_expt5$est.a[quadr.fits_expt5$probabilityRed==0.2],11),
+               rep(quadr.fits_expt5$est.a[quadr.fits_expt5$probabilityRed==0.5],11),
+               rep(quadr.fits_expt5$est.a[quadr.fits_expt5$probabilityRed==0.8],11)),
+           b=c(rep(quadr.fits_expt5$est.b[quadr.fits_expt5$probabilityRed==0.2],11),
+               rep(quadr.fits_expt5$est.b[quadr.fits_expt5$probabilityRed==0.5],11),
+               rep(quadr.fits_expt5$est.b[quadr.fits_expt5$probabilityRed==0.8],11)),
+           c=c(rep(quadr.fits_expt5$est.c[quadr.fits_expt5$probabilityRed==0.2],11),
+               rep(quadr.fits_expt5$est.c[quadr.fits_expt5$probabilityRed==0.5],11),
+               rep(quadr.fits_expt5$est.c[quadr.fits_expt5$probabilityRed==0.8],11)),
+           alph=c(rep(quadr.fits_expt5$est.alph[quadr.fits_expt5$probabilityRed==0.2],11),
+               rep(quadr.fits_expt5$est.alph[quadr.fits_expt5$probabilityRed==0.5],11),
+               rep(quadr.fits_expt5$est.alph[quadr.fits_expt5$probabilityRed==0.8],11))) %>%
+  mutate(prob=lapsePlusLogistic(x, a, b, c, alph))
+ggplot(quadr.plot_expt5, aes(x=x, y=prob, colour=p)) +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1))
+ggsave("img/quadraticFit_expt5.png")
+
+exptDetect_expt5 <- bs.final %>%
+  filter(expt=="expt5", roleCurrent == "bullshitDetector") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  mutate(fit="experiment")
+quadr.plot2_expt5 <- data.frame(probabilityRed.txt = paste("p =", quadr.plot_expt5$p),
+                          reportedDrawn = quadr.plot_expt5$x,
+                          prop = quadr.plot_expt5$prob,
+                          se = NA,
+                          n = NA,
+                          fit = "model")
+quadr.plot_full_expt5 <- bind_rows(exptDetect_expt5, quadr.plot2_expt5)
+ggplot(data=quadr.plot_full_expt5, aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, linetype=fit)) +
+  geom_point(data=filter(quadr.plot_full_expt5, fit=="experiment")) +
+  geom_line() +
+  geom_errorbar(data=filter(quadr.plot_full_expt5, fit=="experiment"), aes(x=reportedDrawn, colour=probabilityRed.txt, min=prop-se, max=prop+se), width=.3) +
+  scale_x_continuous("Reported Marbles Drawn", limits=c(-0.2,10.2)) +
+  scale_y_continuous("Proportion BS Called", limits=c(0,1)) +
+  guides(colour=guide_legend(title="")) +
+  theme_minimal()
+ggsave("img/fit_expt_model_expt5.png")
+```
+
+Not quite right but works for some of data
+```{r}
+# w = b + a
+# u = a / (b + a)
+
+getA <- function(w, u){
+  w * u
+}
+
+getB <- function(w, u){
+  w * (1-u)
+}
+
+slopeShift <- function(k, beta, mu){
+  beta * (k-mu)
+}
+
+lieLogisticModel <- function(k, beta, mu){
+  logitToProb(pmin(10, pmax(-10, slopeShift(k, beta, mu))))
+}
+
+p.lie.k <- function(k, beta, w, u, mu){
+  w2 = logitToProb(w)
+  u2 = logitToProb(u)
+  (1-getB(w2,u2)-getA(w2,u2))*lieLogisticModel(k, beta, mu) + getA(w2,u2)
+}
+
+#p.lie.k(5, 2, runif(1, -0.5, 0.5), runif(1, -0.5, 0.5), runif(1,-5,5))
+
+p.kstar.k <- function(k, kstar, alph){
+  alph2 = logitToProb(alph)
+  dbinom(kstar, 10, alph2) / (1-dbinom(k, 10, alph2))  
+  #dbinom(kstar, 10, alph2)
+}
+
+lieLogisticBinom <- function(k, kstar, util, beta, w, u, mu, alph){
+  if(util == "expt5"){
+    beta = -beta
+  }
+  p.lie = p.lie.k(k, beta, w, u, mu)
+  if(k == kstar){
+    1 - p.lie
+  } else{
+    p.lie * p.kstar.k(k, kstar, alph)
+  }
+}
+
+#lieLogisticBinom(5,6,2,1,5,2,5,0)
+
+lieLoglik <- function(k, kstar, util, beta, w, u, mu, alph){
+  sum(
+    dbinom(kstar, 10, lieLogisticBinom(k, kstar, util, beta, w, u, mu, alph), log=T)
+  )
+}
+
+humanLie$reportedDrawn[humanLie$expt=="expt4" & humanLie$probabilityRed==0.5]
+
+brutefit <- function(tmp){
+  nLL <- function(beta, mu, w, u, alph){
+    -lieLoglik(tmp$drawnRed, tmp$reportedDrawn, tmp$expt, beta, w, u, mu, alph)
+  }
+
+  iter = 0
+  fits = NULL
+  fit = NULL
+  while(is.null(fits)){
+    try(fit <- summary(mle(nLL,
+                           start=list(beta=rnorm(1, 0, 3),
+                                      w=rnorm(1, -2, 3),
+                                      u=rnorm(1, -2, 3),
+                                      mu=rnorm(1, 0, 3),
+                                      alph=rnorm(1, -2, 3)), method = 'BFGS'), TRUE))
+    iter = iter+1
+
+    if(! is.null(fit)){
+      fits <- c(tmp$probabilityRed[1], tmp$expt[1], -0.5*fit@m2logL, length(tmp$reportedDrawn), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
+    } else {
+      if(iter>100){
+        fits <- c(tmp$probabilityRed[1], tmp$expt[1], -9999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+      }
+    }
+  }
+  names(fits) <- c("probabilityRed", "expt", "logL", "n", "est.beta", "est.w", "est.u", "est.mu", "est.alph", "se.beta", "se.w", "se.u", "se.mu", "se.alph")
+  return(fits)
+}
+
+humanLie <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  head(150)
+
+ps = c(-0.5, 0.5, -0.5, 0.5, -5, 5, -5, 5, -5, 5)
+names(ps) <- c("min_beta", "max_beta", "min_w", "max_w", "min_u", "max_u", "min_mu", "max_mu", "min_alph", "max_alph")
+
+logitBinom.fits <- data.frame(do.call(rbind, by(humanLie, humanLie$probabilityRed, brutefit)))
+print(paste("Failed fits:", sum(logitBinom.fits$logL==-9999)))
+logitBinom.fits
+```
+
+
+```{r message=FALSE, warning=FALSE}
+humanLie <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  head(50)
+
+# w = b + a
+# u = a / (b + a)
+
+getA <- function(w, u){
+  w * u
+}
+
+getB <- function(w, u){
+  w * (1-u)
+}
+
+slopeShift <- function(k, beta, mu){
+  beta * (k-mu)
+}
+
+lieLogisticModel <- function(k, beta, mu){
+  logitToProb(pmin(10, pmax(-10, slopeShift(k, beta, mu))))
+}
+
+p.lie.k <- function(k, beta, w, u, mu){
+  w2 = logitToProb(w)
+  u2 = logitToProb(u)
+  (1-getB(w2,u2)-getA(w2,u2))*lieLogisticModel(k, beta, mu) + getA(w2,u2)
+}
+
+#p.lie.k(5, 2, runif(1, -0.5, 0.5), runif(1, -0.5, 0.5), runif(1,-5,5))
+
+p.kstar.k <- function(k, kstar, alph){
+  alph2 = logitToProb(alph)
+  dbinom(kstar, 10, alph2) / (1-dbinom(k, 10, alph2))  
+  #dbinom(kstar, 10, alph2)
+}
+
+lieLogisticBinom <- function(k, kstar, util, beta, w, u, mu, alph){
+  if(util == "expt5"){
+    beta = -beta
+  }
+  p.lie = p.lie.k(k, beta, w, u, mu)
+  if(k == kstar){
+    1 - p.lie
+  } else{
+    p.lie * p.kstar.k(k, kstar, alph)
+  }
+}
+
+#lieLogisticBinom(5,6,2,1,5,2,5,0)
+
+lieLoglik <- function(k, kstar, util, beta, w, u, 
+                      mu0.2_4, alph0.2_4,
+                      mu0.5_4, alph0.5_4,
+                      mu0.8_4, alph0.8_4,
+                      mu0.2_5, alph0.2_5,
+                      mu0.5_5, alph0.5_5,
+                      mu0.8_5, alph0.8_5){
+  pred = humanLie$reportedDrawn
+  pred[humanLie$probabilityRed==0.2 & humanLie$expt=="expt4"] = lieLogisticBinom(k, kstar, util, beta, w, u, mu0.2_4, alph0.2_4)
+  pred[humanLie$probabilityRed==0.5 & humanLie$expt=="expt4"] = lieLogisticBinom(k, kstar, util, beta, w, u, mu0.5_4, alph0.5_4)
+  pred[humanLie$probabilityRed==0.8 & humanLie$expt=="expt4"] = lieLogisticBinom(k, kstar, util, beta, w, u, mu0.8_4, alph0.8_4)
+  pred[humanLie$probabilityRed==0.2 & humanLie$expt=="expt5"] = lieLogisticBinom(k, kstar, util, beta, w, u, mu0.2_5, alph0.2_5)
+  pred[humanLie$probabilityRed==0.5 & humanLie$expt=="expt5"] = lieLogisticBinom(k, kstar, util, beta, w, u, mu0.5_5, alph0.5_5)
+  pred[humanLie$probabilityRed==0.8 & humanLie$expt=="expt5"] = lieLogisticBinom(k, kstar, util, beta, w, u, mu0.8_5, alph0.8_5)
+  sum(
+    dbinom(kstar, 10, pred, log=T)
+  )
+}
+
+# as bernoulli instead of if statement
+
+
+
+brutefit <- function(tmp){
+  nLL <- function(beta, w, u,
+                  mu0.2_4, alph0.2_4,
+                  mu0.5_4, alph0.5_4,
+                  mu0.8_4, alph0.8_4,
+                  mu0.2_5, alph0.2_5,
+                  mu0.5_5, alph0.5_5,
+                  mu0.8_5, alph0.8_5){
+    -lieLoglik(tmp$drawnRed, tmp$reportedDrawn, tmp$expt, beta, w, u, 
+               mu0.2_4, alph0.2_4,
+               mu0.5_4, alph0.5_4,
+               mu0.8_4, alph0.8_4,
+               mu0.2_5, alph0.2_5,
+               mu0.5_5, alph0.5_5,
+               mu0.8_5, alph0.8_5)
+  }
+
+  iter = 0
+  fits = NULL
+  fit = NULL
+  while(is.null(fits)){
+    try(fit <- summary(mle(nLL,
+                           start=list(beta=rnorm(1, 0, 3),
+                                      w=rnorm(1, -2, 3),
+                                      u=rnorm(1, -2, 3),
+                                      mu0.2_4=rnorm(1, 0, 3),
+                                      alph0.2_4=rnorm(1, -2, 3),
+                                      mu0.5_4=rnorm(1, 0, 3),
+                                      alph0.5_4=rnorm(1, -2, 3),
+                                      mu0.8_4=rnorm(1, 0, 3),
+                                      alph0.8_4=rnorm(1, -2, 3),
+                                      mu0.2_5=rnorm(1, 0, 3),
+                                      alph0.2_5=rnorm(1, -2, 3),
+                                      mu0.5_5=rnorm(1, 0, 3),
+                                      alph0.5_5=rnorm(1, -2, 3),
+                                      mu0.8_5=rnorm(1, 0, 3),
+                                      alph0.8_5=rnorm(1, -2, 3)), method = 'BFGS'), TRUE))
+    iter = iter+1
+
+    if(! is.null(fit)){
+      fits <- c(tmp$probabilityRed[1], tmp$expt[1], -0.5*fit@m2logL, length(tmp$reportedDrawn), fit@coef[,"Estimate"], fit@coef[,"Std. Error"])
+    } else {
+      if(iter>100){
+        fits <- c(tmp$probabilityRed[1], tmp$expt[1], -9999, 0, 
+                  0, 0, 0, 
+                  0, 0, 
+                  0, 0, 
+                  0, 0, 
+                  0, 0, 
+                  0, 0, 
+                  0, 0, 
+                  0, 0, 0,
+                  0, 0, 
+                  0, 0,
+                  0, 0, 
+                  0, 0,
+                  0, 0, 
+                  0, 0)
+      }
+    }
+  }
+  names(fits) <- c("probabilityRed", "expt", "logL", "n", 
+                   "est.beta", "est.w", "est.u", 
+                   "est.mu0.2_4", "est.alph0.2_4", 
+                   "est.mu0.5_4", "est.alph0.5_4", 
+                   "est.mu0.8_4", "est.alph0.8_4", 
+                   "est.mu0.2_5", "est.alph0.2_5", 
+                   "est.mu0.5_5", "est.alph0.5_5", 
+                   "est.mu0.8_5", "est.alph0.8_5",
+                   "se.beta", "se.w", "se.u", 
+                   "se.mu0.2_4", "se.alph0.2_4",
+                   "se.mu0.5_4", "se.alph0.5_4",
+                   "se.mu0.8_4", "se.alph0.8_4",
+                   "se.mu0.2_5", "se.alph0.2_5",
+                   "se.mu0.5_5", "se.alph0.5_5",
+                   "se.mu0.8_5", "se.alph0.8_5")
+  return(fits)
+}
+
+ps = c(-0.5, 0.5, -5, 5, -5, 5, 
+       -0.5, 0.5, -5, 5,
+       -0.5, 0.5, -5, 5,
+       -0.5, 0.5, -5, 5,
+       -0.5, 0.5, -5, 5,
+       -0.5, 0.5, -5, 5,
+       -0.5, 0.5, -5, 5)
+names(ps) <- c("min_beta", "max_beta", "min_w", "max_w", "min_u", "max_u", 
+               "min_mu0.2_4", "max_mu0.2_4", "min_alph0.2_4", "max_alph0.2_4",
+               "min_mu0.5_4", "max_mu0.5_4", "min_alph0.5_4", "max_alph0.5_4",
+               "min_mu0.8_4", "max_mu0.8_4", "min_alph0.8_4", "max_alph0.8_4",
+               "min_mu0.2_5", "max_mu0.2_5", "min_alph0.2_5", "max_alph0.2_5",
+               "min_mu0.5_5", "max_mu0.5_5", "min_alph0.5_5", "max_alph0.5_5",
+               "min_mu0.8_5", "max_mu0.8_5", "min_alph0.8_5", "max_alph0.8_5")
+
+logitBinom.fits <- data.frame(do.call(rbind, by(humanLie, humanLie$probabilityRed, brutefit)))
+print(paste("Failed fits:", sum(logitBinom.fits$logL==-9999)))
+logitBinom.fits
+
+```
+
+
+
+
+
+
+
