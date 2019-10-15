@@ -233,9 +233,9 @@ function computerDraw(){
             trial.compDetect = -1;
             //console.log("CompLie: " + trial.compLie)
             if(lie <= trial.drawnRed){
-                trial.reportedDrawn = lie;
-            } else{
                 trial.reportedDrawn = trial.drawnRed;
+            } else{
+                trial.reportedDrawn = lie;
             }
         }
     }    
@@ -258,7 +258,7 @@ function callout(call){
 
 function computerBSDetector(){
     trial.callBS = false;
-    trial.compDetect = 1- cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
+    trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
     trial.compLie = -1;
     //console.log("CompDetect: " + trial.compDetect)
     if(Math.random() < trial.compDetect){
@@ -365,8 +365,8 @@ function bullshitDetector() {
             $('#subjResponse').html('<p>Your opponent said they drew <b id="reportMarbles"/> red marbles.<br><br>Your opponent will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
             computerDraw();
             $('#reportMarbles').html(trial.reportedDrawn);
-            $('#oppPoints').html(expt.marblesSampled - trial.reportedDrawn);
-            $('#yourPoints').html(trial.reportedDrawn);
+            $('#oppPoints').html(trial.reportedDrawn);
+            $('#yourPoints').html(expt.marblesSampled - trial.reportedDrawn);
             $('#subjResponse').css('opacity','1');
             $('#buttonResponse').css('opacity','1');
             trial.responseStartTime = Date.now();
