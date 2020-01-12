@@ -8,8 +8,10 @@ var expt = {
     marblesSampled: 10, //total number of marbles drawn per trial
     roles: ['bullshitter', 'bullshitDetector'],
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
-    allTrialProbs: [0.2,0.5,0.8],
+    allTrialProbs: [0.5],
+    allAIs: ['random','child','chessmaster'],
     trialProbs: 0,
+    AI: null,
     catchTrials: [],
     pseudo: null,
     stat: {
@@ -88,11 +90,28 @@ function clickConsent() {
     $('#instructRounds').html(expt.trials);
     $('#instructMarblesSampled').html(expt.marblesSampled);
     expt.trialProbs = sample(expt.allTrialProbs);
+    expt.AI = sample(expt.allAIs);
+
 }
 
 function clickInstructions() {
     document.getElementById('instructions').style.display = 'none';
+    document.getElementById('condition').style.display = 'block';
+    var condTxt = "";
+    if(expt.AI == "random"){
+    	condTxt = "Today, you'll be playing against a <b>gullible A.I. that makes decisions by choosing randomly</b>, and we wanted to see how the A.I. behaves against real people.";
+    } else if(expt.AI == "child"){
+    	condTxt = "Today, you'll be playing against an <b>A.I. that plays games with kids</b>, and we wanted to see how the A.I. behaves against more clever adults.";
+    } else if(expt.AI == "chessmaster"){
+    	condTxt = "Today, you'll be playing against an <b>A.I. that was trained to play like a professional poker player</b>, and we wanted to see if what the A.I. learned from poker generalizes to other bluffing games.";
+    }
+    $('#conditionText').html(condTxt);
+}
+
+function clickCondition() {
+	document.getElementById('condition').style.display = 'none';
     document.getElementById('prePractice').style.display = 'block';
+
 }
 
 function clickPrePractice(){
@@ -138,11 +157,6 @@ function fillUrn(totalMarbles, probability) {
         }
 
         marble("#urnsvg", color, 17.5, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
-
-        // hide urn if in the bullshitDetector role
-        // if(trial.roleCurrent == 'bullshitter'){
-        //     marble("#urnsvg", color, 20, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
-        // }
     }
 }
 
@@ -211,6 +225,7 @@ function report(){
 }
 
 function computerDraw(){
+	trial.compDetect = -1;
     //groundTruth
     for(var i=0; i<expt.marblesSampled; i++){
         if(Math.random() < trial.probabilityRed){
@@ -223,21 +238,25 @@ function computerDraw(){
     if(trial.pseudoRound){
         trial.reportedDrawn = expt.pseudo[trial.trialNumber];
     } else{
-        if(Math.random() < 0.2){
-            trial.compUnifLie = true;
-            trial.reportedDrawn = Math.floor(randomDouble(0,11));
-        } else{
-            var rand = Math.random();
-            var lie = getK(expt.marblesSampled, trial.probabilityRed, rand);
-            trial.compLie = lie;
-            trial.compDetect = -1;
-            //console.log("CompLie: " + trial.compLie)
-            if(lie <= trial.drawnRed){
-                trial.reportedDrawn = trial.drawnRed;
-            } else{
-                trial.reportedDrawn = lie;
-            }
-        }
+    	if(expt.AI == "random"){
+    		trial.compUnifLie = true;
+        	trial.reportedDrawn = Math.floor(randomDouble(0,11));
+    	} else{ //expt.AI == "child" || "chessmaster"
+    		if(Math.random() < 0.2){
+	            trial.compUnifLie = true;
+	            trial.reportedDrawn = Math.floor(randomDouble(0,11));
+	        } else{
+	            var rand = Math.random();
+	            var lie = getK(expt.marblesSampled, trial.probabilityRed, rand);
+	            trial.compLie = lie;
+	            //console.log("CompLie: " + trial.compLie)
+	            if(lie <= trial.drawnRed){
+	                trial.reportedDrawn = trial.drawnRed;
+	            } else{
+	                trial.reportedDrawn = lie;
+	            }
+	        }
+    	}
     }    
 }
 
@@ -257,9 +276,14 @@ function callout(call){
 }
 
 function computerBSDetector(){
+	trial.compLie = -1;
     trial.callBS = false;
-    trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
-    trial.compLie = -1;
+    if(expt.AI == "random"){
+    	trial.compDetect = .1;
+    } else{
+    	trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
+    }
+    
     //console.log("CompDetect: " + trial.compDetect)
     if(Math.random() < trial.compDetect){
         trial.callBS = true;
@@ -618,6 +642,7 @@ function shuffle(set){
 function recordData(){
     trialData.push({
         exptPart: trial.exptPart,
+        AI: expt.AI,
         trialNumber: trial.trialNumber,
         roleCurrent: trial.roleCurrent,
         marblesSampled: expt.marblesSampled,
