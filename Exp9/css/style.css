@@ -172,6 +172,24 @@ body {
     padding: 3px;
 }
 
+#playerRemind {
+    position: absolute;
+    font-size: 16px;
+    font-family: verdana;
+    font-weight: bold;
+    left: 5%;
+    height: 80%;
+}
+
+#humanRemind {
+    top: 10%;
+}
+
+#oppRemind {
+/*    position: absolute;
+    bottom: 5%;*/
+}
+
 
 #urn {
     float: left;
