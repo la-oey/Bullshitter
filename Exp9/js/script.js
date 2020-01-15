@@ -263,7 +263,7 @@ function computerDraw(){
 
 function callout(call){
     trial.responseTime = Date.now() - trial.responseStartTime;
-    $('.callout-button').prop('disabled', true);
+    //$('.callout-button').prop('disabled', true);
     if(call == 'accept'){
         $('#accept-button').css('opacity','1');
         $('#reject-button').css('opacity','0.5');
@@ -512,7 +512,7 @@ function toScoreboard(){
                 trial.oppTrialScore = 5; //opponent gets +5 points
             }
         } else{
-            trial.callBStxt = "You <b style='color:red'>rejected</b> thee computer's reported answer.<br><br>";
+            trial.callBStxt = "You <b style='color:red'>rejected</b> the computer's reported answer.<br><br>";
             expt.stat.BS += 1;
             //if player catches a liar
             if(trial.reportedDrawn == trial.drawnRed){
