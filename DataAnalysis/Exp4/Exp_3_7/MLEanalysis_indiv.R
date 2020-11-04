@@ -60,10 +60,16 @@ lieLogisticBinom <- function(k, kstar, beta, mu, alph){
   ifelse(k == kstar, 1 - p.lie, p.lie * p.kstar.k(k, kstar, alph))
 }
 
+binom.p <- function(kstar, alph){
+  alph = logitToProb(alph)
+  dbinom(kstar, 10, alph)
+}
+
 ###################
 ## Analysis Loop ##
 ###################
 
+set.seed(8888)
 indivFits <- data.frame(subjID = NULL, 
                         expt = NULL, 
                         prob = NULL, 
@@ -73,7 +79,7 @@ indivFits <- data.frame(subjID = NULL,
                         mu.se = NULL, 
                         alph.est = NULL, 
                         alph.se = NULL)
-
+# subj041, subj166 fail to fit because they never lied
 for(subjNum in unique(humanLie$subjID)){
   humanLie.subj <- filter(humanLie, subjID == subjNum)
   expt = unique(humanLie.subj$expt)
@@ -89,7 +95,9 @@ for(subjNum in unique(humanLie$subjID)){
       pred = lieLogisticBinom(k, kstar, betas, mu, alph)
       # likelihood of observed kstar for that k, given parameters
       neg.log.lik = -1*sum(log(pred))
-      neg.log.lik
+      # neg.log.prior = abs(beta)
+      neg.log.prior = .05*(mu-5)^2
+      neg.log.lik + neg.log.prior
     }
 
     fit.subj <- summary(mle(nLL.indiv,
@@ -115,12 +123,6 @@ for(subjNum in unique(humanLie$subjID)){
 errorSubj <- setdiff(humanLie$subjID, indivFits$subjID) #subjects that threw an error in fitting data
 length(errorSubj)
 
-binom.p <- function(kstar, alph){
-  alph = logitToProb(alph)
-  dbinom(kstar, 10, alph)
-}
-head(indivFits)
-indivFits$subjID
 
 nSubj <- length(unique(indivFits$subjID))
 lieMLE.pred <- data.frame(subj=rep(indivFits$subjID,each=11*11),
@@ -139,8 +141,7 @@ lieMLE.pred <- data.frame(subj=rep(indivFits$subjID,each=11*11),
          p.kstar.k=lieLogisticBinom(k, kstar, beta, mu, alph),
          binom.kstar = binom.p(kstar, alph),
          logp.kstar.k = log(p.kstar.k))
-
-head(lieMLE.pred)
+#write_csv(lieMLE.pred, "individual_sender.csv")
 
 
 lieMLE.pred %>%
@@ -150,18 +151,18 @@ lieMLE.pred %>%
          p = as.factor(paste("p =", p)),
          meanAlph = 10*logitToProb(alph)) %>%
   ggplot(aes(x=expt, y=meanAlph, fill=p)) +
-  geom_dotplot(binaxis = "y", binwidth=0.15, stackdir = "center", alpha=0.25, position="dodge") +
+  geom_dotplot(binaxis = "y", binwidth=0.2, stackdir = "center", alpha=0.5, position="dodge") +
   geom_pointrange(aes(fill=p),
                   stat="summary", 
                   fun.data = "mean_se", 
                   position =  position_dodge(width = 0.9), 
                   shape=21,
-                  size=0.5) +
+                  size=0.75) +
   scale_x_discrete("", labels=sender_points_label) +
-  scale_y_continuous("Mean Lie", limits=c(0,10)) +
+  scale_y_continuous("Mean Lie", limits=c(0,10), expand=c(0,0.15,0,0), breaks=seq(0,10,2)) +
   scale_fill_manual("Base Rate", values=my_red, labels=base_rate_label) +
   theme_minimal()
-ggsave("img/individual/meanLie.pdf")
+ggsave("img/individual/meanLie.pdf", width=6, height=6)
 
 lieMLE.pred %>%
   select(subj, p, expt, beta, beta.se) %>%
@@ -185,7 +186,7 @@ lieMLE.pred %>%
   unique() %>%
   #filter(beta.se < 10) %>%
   ggplot(aes(x=expt, y=mu, fill=p)) +
-  geom_dotplot(binaxis = "y", binwidth=3, stackdir = "center", alpha=0.25, position="dodge") +
+  geom_dotplot(binaxis = "y", binwidth=0.5, stackdir = "center", alpha=0.25, position="dodge") +
   geom_pointrange(aes(fill=p),
                   stat="summary", 
                   fun.data = "mean_se", 
@@ -197,7 +198,7 @@ lieMLE.pred %>%
   theme_minimal()
 ggsave("img/individual/mu.pdf")
 
-lieMLE.pred %>%
+ lieMLE.pred %>%
   select(subj, p, expt, k, p.lie.k) %>%
   unique() %>%
   mutate(p = as.factor(paste("p =", p)),
@@ -210,3 +211,23 @@ lieMLE.pred %>%
   facet_grid(p~expt) +
   theme_bw()
 ggsave("img/individual/probLie.pdf")
+
+
+
+
+
+
+
+
+
+
+
+
+humanLie %>%
+  group_by(subjID, lie) %>%
+  count() %>%
+  group_by(subjID) %>%
+  mutate(prop = n/sum(n)) %>%
+  filter(!lie) %>%
+  ggplot(aes(x=prop)) +
+  geom_histogram()
