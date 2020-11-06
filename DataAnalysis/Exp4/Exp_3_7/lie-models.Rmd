@@ -253,50 +253,6 @@ logliks_randomOpp_m.l
 
 ```
 
-
-### simulated recursive ToM models
-
-```{r}
-# get recursive liar behavior
-# numSims = 1000
-# 
-# recursiveToM_liar <- data.frame(role=factor(),
-#                       p=numeric(), 
-#                       expt=factor(),
-#                       mor=numeric(),
-#                       k=numeric(),
-#                       ksay=numeric(),
-#                       val=numeric(),
-#                       n=numeric())
-# 
-# for(i in c(0.2, 0.5, 0.8)){
-#   for(j in c(0,8,20)){
-#     moral = j
-#     for(k in c(4,5)){
-#       Expt = k
-#       sim.L <- replicate(numSims, p.L_ksay.k.r(i, recurse.D(0.1, i, rep(0.1,11))))
-#       
-#       recursiveToM_liar <- bind_rows(recursiveToM_liar,
-#                                 data.frame(role="Liar", p=i, expt=paste0("expt",k), 
-#                                       mor=j,
-#                                       k = rep(rep(0:10, each=11),numSims),
-#                                       ksay = rep(0:10, 11*numSims),
-#                                       val=as.vector(sim.L),
-#                                       n=rep(1:numSims, each=11)))
-#     }
-#   }
-# }
-
-#write.csv(recursiveToM_liar, "lie-models/recursiveToM_liar.csv")
-# recursiveToM_liar %>%
-#   filter(mor == 0) %>%
-#   group_by(p, expt, k, ksay) %>%
-#   summarise(mean = mean(val)) %>%
-#   ggplot(aes(x=k, y=ksay, fill=mean)) +
-#   geom_tile(stat="identity") +
-#   facet_grid(expt ~ p)
-```
-
 ### iterated recursive liar behavior
 
 ```{r}
@@ -744,49 +700,6 @@ logliks_randomOpp_m.d %>%
 ```
 
 
-### simulated recursive ToM
-
-```{r}
-# get recursive detector behavior
-# numSims = 1000
-# 
-# recursiveToM_detector <- data.frame(role=factor(),
-#                       p=numeric(), 
-#                       expt=factor(),
-#                       mor=numeric(),
-#                       ks=numeric(), # ksay in Detector
-#                       val=numeric(),
-#                       n=numeric()) # prop in Detector
-# 
-# for(i in c(0.2, 0.5, 0.8)){
-#   for(j in c(0,8,20)){
-#     moral = j
-#     for(k in c(4,5)){
-#       Expt = k
-#       sim.D <- t(replicate(numSims, recurse.D(0.1, i, rep(0.1,11))))
-#       
-#       recursiveToM_detector <- bind_rows(recursiveToM_detector,
-#                                 data.frame(role="Detector", p=i, expt=paste0("expt",k), 
-#                                       mor=j,
-#                                       ks = rep(0:10, numSims),
-#                                       val=as.vector(t(sim.D)),
-#                                       n=rep(1:numSims, each=11)))
-#     }
-#   }
-# }
-
-#write.csv(recursiveToM_detector, "lie-models/recursiveToM_detector.csv")
-
-
-
-# recursiveToM_detector %>%
-#   filter(mor == 0) %>%
-#   ggplot(aes(x=ks, y=val, colour=as.factor(p))) +
-#   geom_line(stat="summary", lty="dashed") +
-#   geom_line(data=full.counts.detect.p, aes(x=reportedDrawn, y=prop, colour=as.factor(probabilityRed))) +
-#   facet_grid(expt ~ .)
-```
-
 #### iterated recursive detector behavior
 
 ```{r}
@@ -849,8 +762,9 @@ for(e in c("expt4","expt5")){
 }
 
 -iteratedProduct.d
-
 ```
+
+
 
 
 ### find best fit lying aversion for detector, each conditions
@@ -1126,5 +1040,275 @@ wald.z.test <- function(m1, sd1, m2, sd2){
 
 wald.z.test(5, se.lie.A, 11, se.detect.A)
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+### Check Robustness of Lying Aversion across diff params ###
+
+
+```{r}
+iteratedToM_liar.check <- data.frame(role=factor(),
+                      p=numeric(),
+                      expt=factor(),
+                      mor=numeric(),
+                      depth=numeric(),
+                      k=numeric(),
+                      ksay=numeric(),
+                      val=numeric())
+
+for(i in c(0.2, 0.5, 0.8)){
+  for(j in -5:25){
+    moral = j
+    for(k in c(4,5)){
+      Expt = k
+      for(d in 0:40){
+        sim.L <- p.L_ksay.k.r(i, iterate.D(d, i, rep(0.5,11)))
+
+        iteratedToM_liar <- bind_rows(iteratedToM_liar,
+                                data.frame(role="Liar", p=i, expt=paste0("expt",k),
+                                      mor=j,
+                                      depth=d,
+                                      k = rep(0:10, each=11),
+                                      ksay = rep(0:10, 11),
+                                      val=as.vector(sim.L)))
+      }
+    }
+  }
+}
+
+write_csv(iteratedToM_liar, "lie-models/changeParams/recursiveToM_sender_robust.csv")
+#iteratedToM_liar <- read.csv("lie-models/recursiveToM_sender_robust.csv")
+
+# iteratedToM_liar %>%
+#   mutate(depthGeomWeight = dgeom(depth, 0.1),
+#          weightedVal = val*depthGeomWeight) %>%
+#   group_by(p, expt, mor, k, ksay) %>%
+#   summarise(meanVal = sum(weightedVal)) %>%
+#   filter(mor %in% seq(-5,25, 10), expt=="expt4") %>%
+#   ggplot(aes(x=k, y=ksay, fill=meanVal)) +
+#   geom_tile() +
+#   facet_grid(p ~ mor)
+# 
+# iteratedToM_liar %>%
+#   mutate(depthGeomWeight = dgeom(depth, 0.25),
+#          weightedVal = val*depthGeomWeight) %>%
+#   group_by(p, expt, mor, k, ksay) %>%
+#   summarise(meanVal = sum(weightedVal)) %>%
+#   filter(mor %in% seq(-5,25, 10), expt=="expt4") %>%
+#   ggplot(aes(x=k, y=ksay, fill=meanVal)) +
+#   geom_tile() +
+#   facet_grid(p ~ mor)
+```
+
+
+```{r}
+iteratedToM_detector.check <- data.frame(role=factor(),
+                      p=numeric(),
+                      expt=factor(),
+                      mor=numeric(),
+                      depth=numeric(),
+                      ks=numeric(), # ksay in Detector
+                      val=numeric()) # prop in Detector
+
+for(i in c(0.2, 0.5, 0.8)){
+  for(j in c(-5:25)){
+    moral = j
+    for(k in c(4,5)){
+      Expt = k
+      for(d in 0:40){
+        sim.D <- iterate.D(d, i, rep(0.5,11))
+
+        iteratedToM_detector <- bind_rows(iteratedToM_detector,
+                                data.frame(role="Detector", p=i, expt=paste0("expt",k),
+                                      mor=j,
+                                      depth=d,
+                                      ks = 0:10,
+                                      val=as.vector(t(sim.D))))
+      }
+    }
+  }
+}
+write_csv(iteratedToM_detector, "lie-models/changeParams/recursiveToM_receiver_robust.csv")
+
+# iteratedToM_detector %>%
+#   mutate(depthGeomWeight = dgeom(depth, 0.1),
+#          weightedVal = val*depthGeomWeight) %>%
+#   group_by(p, expt, mor, ks) %>%
+#   summarise(meanVal = sum(weightedVal)) %>%
+#   filter(mor %in% seq(-5,25, 5), expt=="expt4") %>%
+#   ggplot(aes(x=ks, y=meanVal, colour=as.factor(mor))) +
+#   geom_line() +
+#   facet_wrap(~p)
+# 
+# iteratedToM_detector %>%
+#   mutate(depthGeomWeight = dgeom(depth, 0.25),
+#          weightedVal = val*depthGeomWeight) %>%
+#   group_by(p, expt, mor, ks) %>%
+#   summarise(meanVal = sum(weightedVal)) %>%
+#   filter(mor %in% seq(-5,25, 5), expt=="expt4") %>%
+#   ggplot(aes(x=ks, y=meanVal, colour=as.factor(mor))) +
+#   geom_line() +
+#   facet_wrap(~p)
+```
+
+```{r}
+iteratedToM_liar_weighted.new <- iteratedToM_liar %>%
+  mutate(depthGeomWeight = dgeom(depth, 0.25),
+         weightedVal = val*depthGeomWeight) %>%
+  group_by(p, expt, mor, k, ksay) %>%
+  summarise(meanVal = sum(weightedVal))
+
+iteratedToM_detector_weighted.new <- iteratedToM_detector %>%
+  mutate(depthGeomWeight = dgeom(depth, 0.25),
+         weightedVal = val*depthGeomWeight) %>%
+  group_by(p, expt, mor, ks) %>%
+  summarise(meanVal = sum(weightedVal))
+```
+
+
+
+
+
+
+### find best fitting lying aversion, all conditions
+```{r}
+sender.logliks_m <- data.frame(decay = numeric(), mor = numeric(), loglik = numeric())
+for(a in c(0.1, 0.25, 0.5, 1)){
+  ALPH = a
+  iteratedToM_liar.check <- data.frame(role=factor(),
+                        p=numeric(),
+                        expt=factor(),
+                        mor=numeric(),
+                        depth=numeric(),
+                        k=numeric(),
+                        ksay=numeric(),
+                        val=numeric())
+  
+  for(i in c(0.2, 0.5, 0.8)){
+    for(j in 0:20){
+      moral = j
+      for(k in c(4,5)){
+        Expt = k
+        for(d in 0:40){
+          sim.L <- p.L_ksay.k.r(i, iterate.D(d, i, rep(0.5,11)))
+  
+          iteratedToM_liar.check <- bind_rows(iteratedToM_liar.check,
+                                  data.frame(role="Liar", p=i, expt=paste0("expt",k),
+                                        mor=j,
+                                        depth=d,
+                                        k = rep(0:10, each=11),
+                                        ksay = rep(0:10, 11),
+                                        val=as.vector(sim.L)))
+        }
+      }
+    }
+  }
+  for(dec in c(0.05, 0.1, 0.25, 0.5, 1)){
+    iteratedToM_liar_weighted.new <- iteratedToM_liar.check %>%
+      mutate(depthGeomWeight = dgeom(depth, dec),
+             weightedVal = val*depthGeomWeight) %>%
+      group_by(p, expt, mor, k, ksay) %>%
+      summarise(meanVal = sum(weightedVal))
+    for(m in unique(iteratedToM_liar.check$mor)){
+      iteratedToM_liar_mX <- filter(iteratedToM_liar_weighted.new, mor==m)
+      tempProd <- 0
+      for(e in c("expt4","expt5")){
+        for(prob in c(0.2, 0.5, 0.8)){
+          for(t in 0:10){
+            this.matr <- matrix(filter(iteratedToM_liar_mX,expt==e, p==prob)$meanVal, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
+            this.counts <- filter(countsLie, expt==e, probabilityRed==prob)
+            loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
+            tempProd <- tempProd + loglik
+          }
+        }
+      }
+      sender.logliks_m <- bind_rows(sender.logliks_m, data.frame(alpha=a, decay=dec, mor=m, loglik=tempProd))
+    }
+  }
+}
+
+sender.logliks_m.saved <- sender.logliks_m
+write.csv(sender.logliks_m.saved, "sender_params.csv")
+save.sender <- sender.logliks_m %>%
+  group_by(alpha, decay) %>%
+  filter(loglik == max(loglik)) %>%
+  mutate(sender.mor = mor)
+
+
+
+
+receiver.logliks_m <- data.frame(decay = numeric(), mor = numeric(), loglik = numeric())
+
+for(a in c(0.1, 0.25, 0.5, 1)){
+  ALPH = a
+  iteratedToM_detector.check <- data.frame(role=factor(),
+                          p=numeric(),
+                          expt=factor(),
+                          mor=numeric(),
+                          depth=numeric(),
+                          ks=numeric(), # ksay in Detector
+                          val=numeric()) # prop in Detector
+  for(i in c(0.2, 0.5, 0.8)){
+    for(j in c(0:20)){
+      moral = j
+      for(k in c(4,5)){
+        Expt = k
+        for(d in 0:40){
+          sim.D <- iterate.D(d, i, rep(0.5,11))
+  
+          iteratedToM_detector.check <- bind_rows(iteratedToM_detector.check,
+                                  data.frame(role="Detector", p=i, expt=paste0("expt",k),
+                                        mor=j,
+                                        depth=d,
+                                        ks = 0:10,
+                                        val=as.vector(t(sim.D))))
+        }
+      }
+    }
+  }
+  for(dec in c(0.05, 0.1, 0.25, 0.5, 1)){
+    iteratedToM_detector_weighted.new <- iteratedToM_detector.check %>%
+      mutate(depthGeomWeight = dgeom(depth, dec),
+             weightedVal = val*depthGeomWeight) %>%
+      group_by(p, expt, mor, ks) %>%
+      summarise(meanVal = sum(weightedVal))
+    for(m in unique(iteratedToM_detector.check$mor)){
+      iteratedToM_detector_mX <- filter(iteratedToM_detector_weighted.new, mor==m)
+      tempProd <- 0
+      for(e in c("expt4","expt5")){
+        for(prob in c(0.2, 0.5, 0.8)){
+          for(t in 0:10){
+            this.prob <- filter(iteratedToM_detector_mX,expt==e, p==prob, ks==t)$meanVal #matrix for p=0.2, 0.5, 0.8 are the same
+            this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
+            loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), this.prob, log=T)
+            #print(paste(e, ",", "p =", prob, "true =", t, ":", loglik))
+            tempProd <- tempProd + loglik
+          }
+        }
+      }
+      receiver.logliks_m <- bind_rows(receiver.logliks_m, data.frame(alpha=a, decay=dec, mor=m, loglik=tempProd))
+    }
+  }
+}
+
+save.receiver <- receiver.logliks_m %>%
+  filter(decay != 1) %>%
+  group_by(alpha, decay) %>%
+  filter(loglik == max(loglik)) %>%
+  mutate(receiver.mor = mor)
+
+left_join(save.sender, save.receiver, c("alpha","decay")) %>%
+  select(decay, alpha, sender.mor, receiver.mor)
+```
+
 
 
