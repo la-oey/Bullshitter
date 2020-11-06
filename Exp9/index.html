@@ -86,6 +86,18 @@ TODO:
     <button class="big-button active-button" id="continueLead" onclick="clickInstructions();">Click here to continue</button>
 </div>
 
+<div id="condition" class="screen">
+    <p class="mtitle">
+        Who is your opponent?
+    </p>
+    <center><img class="oppIcon" src="" width="30%"></center>
+    <div>
+        <p id="conditionText"/>
+        <p>Once again, your goal is to beat the computer by the highest point differential possible. Please don't go easy on the computer.
+    </div>
+    <button class="big-button active-button" onclick="clickCondition();">Click here to continue</button>
+</div>
+
 
 <div id="prePractice" class="screen">
     <p class="mtitle">
@@ -99,12 +111,22 @@ TODO:
         Nice job! You're ready to move on to the experiment.
     </p>
     <div>
-       <p>Next, you and your opponent will play <b id="instructRounds"></b> rounds. Unlike in the practice trials, you will only see your score every fifth trial until the very end of the experiment. Good luck!</p>
+       <p>Next, you and the computer will play <b id="instructRounds"></b> rounds. Unlike in the practice trials, you will only see your score every fifth trial until the very end of the experiment. Good luck!</p>
     </div>
     <button class="big-button active-button" id="continueLead" onclick="clickPostPractice();">Click here to continue</button>
 </div>
 
 <div id="trial" class="screen">
+    <div id="playerRemind">
+        <div id="humanRemind">
+            You<br>
+            <img class="playerIcon" src="img/human.png" width="20%">
+        </div><br><br>
+        <div id="oppRemind">
+            Computer<br>
+            <img class="oppIcon" src="" width="20%">
+        </div>
+    </div>
     <p class="mtitle trialNum">Round</p>
     <center><div id="trialInstruct"></div><br></center>
     <div id="wrapper">
@@ -139,8 +161,16 @@ TODO:
     </div>
 	<div class="scoreboardDiv" id="totalScoreboardDiv">
         <center><h2>Scoreboard</h2></center>
-	    <div class="scoreCol">Your Score:<br><b class="totalScores playerScore">0</b></div>
-	    <div class="scoreCol">Opponent's Score:<br><b class="totalScores oppScore">0</b></div>
+	    <div class="scoreCol">
+            <img class="playerIcon" src="img/human.png" width="30%"><br>
+            Your Score:<br>
+            <b class="totalScores playerScore">0</b>
+        </div>
+	    <div class="scoreCol">
+            <img class="oppIcon" src="" width="30%"><br>
+            Opponent's Score:<br>
+            <b class="totalScores oppScore">0</b>
+        </div>
  	</div>
 	<br><br><br><br><br>
     <button class="big-button active-button" id="nextScoreboard" type="button" onclick="trialDone();">Next!</button>
@@ -160,30 +190,30 @@ TODO:
             You told the true: <b id="stat_truth"></b>
         </p><br>
         <p class="indent">
-            Your opponent accepted your reported value: <b id="stat_truth_noBS"></b><br>
-            Your opponent called BS, but you told the truth: <b id="stat_truth_BS"></b><br>
+            Computer accepted your reported value: <b id="stat_truth_noBS"></b><br>
+            Computer called BS, but you told the truth: <b id="stat_truth_BS"></b><br>
         </p>
         <p>
             You lied: <b id="stat_lie"></b>
         </p><br>
         <p class="indent">
-            Your opponent accepted, but you lied: <b id="stat_lie_noBS"></b><br>
-            Your opponent caught you lying: <b id="stat_lie_BS"></b><br>
+            Computer accepted, but you lied: <b id="stat_lie_noBS"></b><br>
+            Computer caught you lying: <b id="stat_lie_BS"></b><br>
         </p>
         <br><br>
         <p> 
-            You accepted your opponent's report: <b id="stat_noBS"></b>
+            You accepted the computer's report: <b id="stat_noBS"></b>
         </p><br>
         <p class="indent">
-            You accepted and your opponent told the truth: <b id="stat_noBS_truth"></b><br>
-            You accepted and your opponent lied: <b id="stat_noBS_lie"></b><br>
+            You accepted and the computer told the truth: <b id="stat_noBS_truth"></b><br>
+            You accepted and the computer lied: <b id="stat_noBS_lie"></b><br>
         </p>
         <p>
             You called BS: <b id="stat_BS"></b>
         </p><br>
         <p class="indent">
-            You called BS, but your opponent told the truth: <b id="stat_BS_truth"></b><br>
-            You called BS, and your opponent lied: <b id="stat_BS_lie"></b><br>
+            You called BS, but the computer told the truth: <b id="stat_BS_truth"></b><br>
+            You called BS, and the computer lied: <b id="stat_BS_lie"></b><br>
         </p>
 
     </div>

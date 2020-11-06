@@ -8,8 +8,10 @@ var expt = {
     marblesSampled: 10, //total number of marbles drawn per trial
     roles: ['bullshitter', 'bullshitDetector'],
     roleFirst: 'bullshitter', //roles: {'bullshitter','bullshitDetector'}
-    allTrialProbs: [0.2,0.5,0.8],
+    allTrialProbs: [0.5],
+    allAIs: ['random','child','poker'],
     trialProbs: 0,
+    AI: null,
     catchTrials: [],
     pseudo: null,
     stat: {
@@ -88,11 +90,29 @@ function clickConsent() {
     $('#instructRounds').html(expt.trials);
     $('#instructMarblesSampled').html(expt.marblesSampled);
     expt.trialProbs = sample(expt.allTrialProbs);
+    expt.AI = sample(expt.allAIs);
+
 }
 
 function clickInstructions() {
     document.getElementById('instructions').style.display = 'none';
+    document.getElementById('condition').style.display = 'block';
+    var condTxt = "";
+    if(expt.AI == "random"){
+    	condTxt = "Today, you'll be playing against a <b>gullible A.I. that makes decisions by choosing randomly</b>, and we wanted to see how the A.I. behaves against real people.";
+    } else if(expt.AI == "child"){
+    	condTxt = "Today, you'll be playing against an <b>A.I. that plays games with kids</b>, and we wanted to see how the A.I. behaves against more clever adults.";
+    } else if(expt.AI == "poker"){
+    	condTxt = "Today, you'll be playing against an <b>A.I. that was trained to play like a professional poker player</b>, and we wanted to see if what the A.I. learned from poker generalizes to other bluffing games.";
+    }
+    $('#conditionText').html(condTxt);
+    $('.oppIcon').attr("src","img/AI"+expt.AI+".png");
+}
+
+function clickCondition() {
+	document.getElementById('condition').style.display = 'none';
     document.getElementById('prePractice').style.display = 'block';
+
 }
 
 function clickPrePractice(){
@@ -138,11 +158,6 @@ function fillUrn(totalMarbles, probability) {
         }
 
         marble("#urnsvg", color, 17.5, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
-
-        // hide urn if in the bullshitDetector role
-        // if(trial.roleCurrent == 'bullshitter'){
-        //     marble("#urnsvg", color, 20, randomDouble(.05*$('#urn').width(), .95*$('#urn').width()), randomDouble(.05*$('#urn').height(), .95*$('#urn').height()));
-        // }
     }
 }
 
@@ -202,7 +217,7 @@ function report(){
         trial.waitTime = 1000 + 3000*exponential(0.75);
         setTimeout(function(){
             clearInterval(trial.timer);
-            $('#subjResponse').html("<p><br>Your opponent made a decision. Click 'Next!' to continue.<br><br></p>")
+            $('#subjResponse').html("<p><br>The computer made a decision. Click 'Next!' to continue.<br><br></p>")
             $('#subjResponse').css('opacity','1');
             $('#next').prop('disabled',false);
         }, trial.waitTime);
@@ -211,6 +226,7 @@ function report(){
 }
 
 function computerDraw(){
+	trial.compDetect = -1;
     //groundTruth
     for(var i=0; i<expt.marblesSampled; i++){
         if(Math.random() < trial.probabilityRed){
@@ -223,27 +239,31 @@ function computerDraw(){
     if(trial.pseudoRound){
         trial.reportedDrawn = expt.pseudo[trial.trialNumber];
     } else{
-        if(Math.random() < 0.2){
-            trial.compUnifLie = true;
-            trial.reportedDrawn = Math.floor(randomDouble(0,11));
-        } else{
-            var rand = Math.random();
-            var lie = getK(expt.marblesSampled, trial.probabilityRed, rand);
-            trial.compLie = lie;
-            trial.compDetect = -1;
-            //console.log("CompLie: " + trial.compLie)
-            if(lie <= trial.drawnRed){
-                trial.reportedDrawn = trial.drawnRed;
-            } else{
-                trial.reportedDrawn = lie;
-            }
-        }
+    	if(expt.AI == "random"){
+    		trial.compUnifLie = true;
+        	trial.reportedDrawn = Math.floor(randomDouble(0,11));
+    	} else{ //expt.AI == "child" || "poker"
+    		if(Math.random() < 0.2){
+	            trial.compUnifLie = true;
+	            trial.reportedDrawn = Math.floor(randomDouble(0,11));
+	        } else{
+	            var rand = Math.random();
+	            var lie = getK(expt.marblesSampled, trial.probabilityRed, rand);
+	            trial.compLie = lie;
+	            //console.log("CompLie: " + trial.compLie)
+	            if(lie <= trial.drawnRed){
+	                trial.reportedDrawn = trial.drawnRed;
+	            } else{
+	                trial.reportedDrawn = lie;
+	            }
+	        }
+    	}
     }    
 }
 
 function callout(call){
     trial.responseTime = Date.now() - trial.responseStartTime;
-    $('.callout-button').prop('disabled', true);
+    //$('.callout-button').prop('disabled', true);
     if(call == 'accept'){
         $('#accept-button').css('opacity','1');
         $('#reject-button').css('opacity','0.5');
@@ -257,9 +277,14 @@ function callout(call){
 }
 
 function computerBSDetector(){
+	trial.compLie = -1;
     trial.callBS = false;
-    trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
-    trial.compLie = -1;
+    if(expt.AI == "random"){
+    	trial.compDetect = .1;
+    } else{
+    	trial.compDetect = cbinom(expt.marblesSampled, trial.probabilityRed, trial.reportedDrawn) - (cbinom(expt.marblesSampled, trial.probabilityRed, (expt.marblesSampled*trial.probabilityRed)) - 0.5) //lowers prob of celling out by centering cbinom at expected mean
+    }
+    
     //console.log("CompDetect: " + trial.compDetect)
     if(Math.random() < trial.compDetect){
         trial.callBS = true;
@@ -311,8 +336,8 @@ function restartTrial(){
 function bullshitter() {
     restartTrial();
 
-    $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for you; each <b style='color:blue'>blue</b> marble is 1 point for your opponent.")
-    $('#subjResponse').html('<label><br><br><br>Say how many <b style="color:red">red</b> marbles you want your opponent to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/> <button class="active-button" id="report-button" type="button" onclick="report();">Report!</button><br>');
+    $('#trialInstruct').html("Click the 'Draw Marble' button to sample marbles from the box. Draw <b>10</b> marbles.<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for you; each <b style='color:blue'>blue</b> marble is 1 point for the computer.")
+    $('#subjResponse').html('<label><br><br><br>Say how many <b style="color:red">red</b> marbles you want the computer to think you drew:</label><input type="text" id="reportMarbles" value="" size="2" maxlength="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/> <button class="active-button" id="report-button" type="button" onclick="report();">Report!</button><br>');
     $('#urnsvg').css('background-color','white');
     $('#tubesvg').css('background-color','white');
     $('#draw-button').prop('disabled',false);
@@ -332,7 +357,7 @@ function bullshitter() {
 function flickerWait(){
     var op = 0.1;
     var increment = 0.1;
-    $('#subjResponse').html('<p><br>Waiting for your opponent...<br><br></p>');
+    $('#subjResponse').html('<p><br>Waiting for the computer...<br><br></p>');
     $('#subjResponse').css('opacity','0');
     trial.timer = setInterval(go, 50)
     function go(){
@@ -350,7 +375,7 @@ function flickerWait(){
 function bullshitDetector() {
     restartTrial();
 
-    $('#trialInstruct').html("It's your opponent's turn to sample marbles.<br><br>")
+    $('#trialInstruct').html("It's the computer's turn to sample marbles.<br><br>")
     //$('#urnsvg').css('background-color','purple');
     $('#tubesvg').css('background-color','purple');
     $('#draw-button').prop('disabled',true);
@@ -361,8 +386,8 @@ function bullshitDetector() {
         trial.waitTime = 3000 + 6000*exponential(0.75);
         setTimeout(function(){
             clearInterval(trial.timer);
-            $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think your opponent is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think your opponent is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for your opponent; each <b style='color:blue'>blue</b> marble is 1 point for you.");
-            $('#subjResponse').html('<p>Your opponent said they drew <b id="reportMarbles"/> red marbles.<br><br>Your opponent will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
+            $('#trialInstruct').html("Click <b style='color:green'>'Accept'</b> if you think the computer is <b style='color:green'>telling the truth</b> or <b style='color:red'>'Reject'</b> if you think the computer is <b style='color:red'>lying</b>. Then click 'Next!'<br>Here's how points work: each <b style='color:red'>red</b> marble is 1 point for the computer; each <b style='color:blue'>blue</b> marble is 1 point for you.");
+            $('#subjResponse').html('<p>The computer said they drew <b id="reportMarbles"/> red marbles.<br><br>The computer will win <b id="oppPoints"></b> points and you will win <b id="yourPoints"/> points this round.</p>');
             computerDraw();
             $('#reportMarbles').html(trial.reportedDrawn);
             $('#oppPoints').html(trial.reportedDrawn);
@@ -401,7 +426,7 @@ function catchTrial(role, exptPart){
         trial.catch.question = 'How many red marbles did you actually draw?'
         trial.catch.key = trial.drawnRed;
     } else{
-        trial.catch.question = 'How many red marbles did your opponent report drawing?'
+        trial.catch.question = 'How many red marbles did the computer report drawing?'
         trial.catch.key = trial.reportedDrawn;
     }
     $('#catchQ').html('<label>'+trial.catch.question+'</label>');
@@ -443,7 +468,7 @@ function toScoreboard(){
 
     if(!trial.callBS){
         if(trial.roleCurrent == 'bullshitter'){
-            trial.callBStxt = "Your opponent <b style='color:green'>accepted</b> your reported answer.<br><br>";
+            trial.callBStxt = "The computer <b style='color:green'>accepted</b> your reported answer.<br><br>";
             trial.playerTrialScore = trial.reportedDrawn; 
             trial.oppTrialScore = expt.marblesSampled - trial.reportedDrawn;
             if(trial.reportedDrawn == trial.drawnRed){
@@ -456,21 +481,21 @@ function toScoreboard(){
                 expt.stat.lie_noBS += 1;
             }
         } else{
-            trial.callBStxt = "You <b style='color:green'>accepted</b> your opponent's reported answer.<br><br>";
+            trial.callBStxt = "You <b style='color:green'>accepted</b> the computer's reported answer.<br><br>";
             expt.stat.noBS += 1;
             trial.oppTrialScore = trial.reportedDrawn;
             trial.playerTrialScore = expt.marblesSampled - trial.reportedDrawn;
             if(trial.reportedDrawn == trial.drawnRed){
-                trial.callBStxt = trial.callBStxt + "Your opponent was <b>telling the truth</b>.<br><br>";
+                trial.callBStxt = trial.callBStxt + "The computer was <b>telling the truth</b>.<br><br>";
                 expt.stat.noBS_truth += 1;
             } else{
-                trial.callBStxt = trial.callBStxt + "Your opponent was <b>lying</b>.<br>The true answer was <b>" + trial.drawnRed + "</b>.";
+                trial.callBStxt = trial.callBStxt + "The computer was <b>lying</b>.<br>The true answer was <b>" + trial.drawnRed + "</b>.";
                 expt.stat.noBS_lie += 1;
             }
         }
     } else{
         if(trial.roleCurrent == 'bullshitter'){
-            trial.callBStxt = "Your opponent <b style='color:red'>rejected</b> your reported answer.<br><br>";
+            trial.callBStxt = "The computer <b style='color:red'>rejected</b> your reported answer.<br><br>";
             //if player is telling the truth
             if(trial.reportedDrawn == trial.drawnRed){
                 trial.callBStxt = trial.callBStxt + "You were <b>telling the truth</b>.<br><br>";
@@ -487,16 +512,16 @@ function toScoreboard(){
                 trial.oppTrialScore = 5; //opponent gets +5 points
             }
         } else{
-            trial.callBStxt = "You <b style='color:red'>rejected</b> your opponent's reported answer.<br><br>";
+            trial.callBStxt = "You <b style='color:red'>rejected</b> the computer's reported answer.<br><br>";
             expt.stat.BS += 1;
             //if player catches a liar
             if(trial.reportedDrawn == trial.drawnRed){
-                trial.callBStxt = trial.callBStxt + "Your opponent was <b>telling the truth</b>.<br><br>";
+                trial.callBStxt = trial.callBStxt + "The computer was <b>telling the truth</b>.<br><br>";
                 expt.stat.BS_truth += 1;
                 trial.playerTrialScore = expt.marblesSampled - trial.reportedDrawn - 5; //player gets 10 - points as reported w/ -5 penalty
                 trial.oppTrialScore = trial.reportedDrawn; //opponent gets points as reported
             } else{
-                trial.callBStxt = trial.callBStxt + "Your opponent was <b>lying</b>.<br>The true answer was <b>" + trial.drawnRed + "</b>.";
+                trial.callBStxt = trial.callBStxt + "The computer was <b>lying</b>.<br>The true answer was <b>" + trial.drawnRed + "</b>.";
                 expt.stat.BS_lie += 1;
                 trial.playerTrialScore = 5; //player gets +5 points
                 trial.oppTrialScore = -5; //opponent gets -5 points
@@ -549,11 +574,11 @@ function trialDone() {
         document.getElementById('postPractice').style.display = 'block';
     } else if(trial.trialNumber >= expt.trials){
         if(expt.stat.playerTotalScore == expt.stat.oppTotalScore){
-            $('#whowon').html("You and your opponent tied!");
+            $('#whowon').html("You and the computer tied!");
         } else if(expt.stat.playerTotalScore > expt.stat.oppTotalScore){
             $('#whowon').html("You won!");
         } else{
-            $('#whowon').html("Your opponent won!");
+            $('#whowon').html("The computer won!");
         }
 
         $('.scoreboardDiv').show();
@@ -618,6 +643,7 @@ function shuffle(set){
 function recordData(){
     trialData.push({
         exptPart: trial.exptPart,
+        AI: expt.AI,
         trialNumber: trial.trialNumber,
         roleCurrent: trial.roleCurrent,
         marblesSampled: expt.marblesSampled,
