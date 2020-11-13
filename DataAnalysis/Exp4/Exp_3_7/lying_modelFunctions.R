@@ -2,12 +2,13 @@ numMarbles = 10
 KSAY = matrix(rep(0:numMarbles,numMarbles+1),nrow=numMarbles+1)
 K = matrix(rep(0:numMarbles, each=numMarbles+1), nrow=numMarbles+1)
 BET = 0.8
-ALPH = 0.25
+ALPH = 0.25 #0.25
 liePenalty = 10 # 10 # -5
 faPenalty = 5 # 5 # 0
 Expt = 4
-moral = 20 #liar's internal penalty for lying
+moral = 0 #liar's internal penalty for lying
 #moral = 5
+moral_receiver = 0 #only use to calibrate BS caller's utility
 
 # Depends on Expt #
 u.L <- function(ksay, lie, BS) {
@@ -82,9 +83,9 @@ u.D <- function(ksay, lie, BS) {
       }
     }
   }
-  # if(lie){
-  #   util = util + moral
-  # }
+  if(BS){
+    util = util - moral_receiver
+  }
   return(util)
 }
 
@@ -164,6 +165,23 @@ recurse.D <- function(decay, p, prior=rep(0.1,11)){
   }
 }
 
+## iterative instead of recursive, so specify depth
+
+## this is different from recurse.L
+iterate.L <- function(iter, p, prior=rep(0.1,11)){
+  #print(iter)
+  p_t.ksay.r(p, iterate.D(iter, p, prior))
+}
+
+iterate.D <- function(iter, p, prior=rep(0.1,11)){
+  #print(iter)
+  if(iter == 0){
+    return(prior)
+  } else{
+    return(mapply(p.D_bs.ksay.r,0:10, p, iterate.L((iter - 1), p, prior)))
+  }
+}
+
 1-p.k(0:10, 0.5)
 EV.D_bs.ksay.r(3, 0.8, TRUE, p_t.ksay.r(0.8, rep(0.5,11)))
 
@@ -177,4 +195,11 @@ recurse.L(0.1, 0.5)
 (third <- p_t.ksay.r(0.5, second))
 (fourth <- mapply(p.D_bs.ksay.r, 0:numMarbles, 0.5, third))
 (fifth <- p_t.ksay.r(0.5, fourth))
+
+p.lie.k.fromDet <- function(p, p.D) { #look into this
+  EV.all <- mapply(function(i) EV.L_ksay.k.r(i, 0:numMarbles, p, p.D), 0:numMarbles)
+  1-diag(apply(EV.all,2,softmax))
+}
+
+round(p.lie.k.fromDet(0.5, rep(0.5,11)),4) 
 

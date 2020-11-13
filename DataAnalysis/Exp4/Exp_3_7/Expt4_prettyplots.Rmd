@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(forcats)
 library(plotly)
 library(ggthemes)
 library(lme4)
@@ -15,6 +16,7 @@ library(plot3D)
 library(cowplot)
 library(stats4)
 library(scales)
+library(grid)
 source("lying_modelFunctions.R")
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -28,6 +30,8 @@ knitr::opts_chunk$set(echo = TRUE)
 # write.csv(bs.final, "bsfinal_anon.csv")
 
 bs.final <- read.csv("bsfinal_anon.csv")
+
+## old model files
 df.unif_expt4 <- read_csv("sims_varyMorality_expt4_alph0.25.csv")
 df.unif_expt4 <- mutate(df.unif_expt4, expt = "expt4")
 moralityResponseToIdiot_expt4 <- read_csv("sims_varyMorality_liarResponseToIdiot_expt4_alph0.25.csv")
@@ -38,8 +42,26 @@ moralityResponseToIdiot_expt5 <- read_csv("sims_varyMorality_liarResponseToIdiot
 moralityResponseToIdiot_expt5 <- mutate(moralityResponseToIdiot_expt5, expt = "expt5")
 df.unif <- bind_rows(df.unif_expt4, df.unif_expt5) %>%
   mutate(expt = as.factor(expt))
+
+## new model files
+noToM_sender <- read_csv("lie-models/noToM_sender_prior0.5.csv")
+noToM_receiver <- read_csv("lie-models/noToM_receiver_prior0.5.csv")
+recursiveToM_sender <- read_csv("lie-models/recursiveToM_sender_prior0.5.csv")
+recursiveToM_receiver <- read_csv("lie-models/recursiveToM_receiver_prior0.5.csv")
+
+indiv.sender <- read_csv("individual_sender.csv")
+
+
+
 moralityResponseToIdiot <- bind_rows(moralityResponseToIdiot_expt4, moralityResponseToIdiot_expt5) %>%
   mutate(expt = as.factor(expt))
+
+# one sided 2 sample t test with pooled variance
+wald.z.test <- function(m1, sd1, m2, sd2){
+  z <- (m1 - m2) / sqrt(sd1^2 + sd2^2)
+  p <- pnorm(abs(z), lower.tail=F)
+  return(data.frame(m1, sd1, m2, sd2, z, p))
+}
 
 condColors.diff = c("p = 0.2" = "blue3",
                     "p = 0.5" = "purple3",
@@ -55,7 +77,22 @@ alphaLine = 0.8
 lineSize = 0.9
 ablineSize = 0.8
 axisLineSize = 0.5
+
+
+
+my_red = c("#ffd5d6","#fc7f81","#fd2428")
+
+p_label = c(
+  "p = 0.2" = "20% red",
+  "p = 0.5" = "50% red",
+  "p = 0.8" = "80% red"
+)
+
+outlinecolor = "black"
+strokesize = 0.25
 ```
+
+
 
 
 ```{r}
@@ -72,7 +109,8 @@ stdErrLiar = function(morVal, datafr){
   left_join(real, prediction, by=c("expt", "probabilityRed", "drawnRed")) %>%
     mutate(error = reportedDrawn - predicted) %>%
     summarise(n = n(),
-              stderror = sum(error^2)/sqrt(n)) %>%
+              residsum = sum(error^2),
+              stderror = sqrt(residsum/n)) %>%
     .$stderror
 }
 
@@ -90,24 +128,143 @@ stdErrDetector = function(morVal, datafr){
   left_join(real, prediction, by=c("expt", "probabilityRed", "reportedDrawn")) %>%
     mutate(error = callBS - predicted) %>%
     summarise(n = n(),
-              stderror = sum(error^2)/sqrt(n)) %>%
+              residsum = sum(error^2),
+              stderror = sqrt(residsum/n)) %>%
     .$stderror
 }
 
-data.frame(mor = min(df.unif$mor):max(df.unif$mor)) %>%
+m.df <- data.frame(mor = min(df.unif$mor):max(df.unif$mor)) %>%
   mutate(stderrLieMorality = sapply(mor, stdErrLiar, df.unif),
          stderrDetectMorality = sapply(mor, stdErrDetector, df.unif),
          stderrLieMoralityIdiot = sapply(mor, stdErrLiar, moralityResponseToIdiot)) %>%
-  drop_na() %>%
-  arrange(stderrLieMoralityIdiot) %>%
+  drop_na()
+
+m.df %>%
   filter(stderrLieMorality == min(stderrLieMorality) | 
            stderrDetectMorality == min(stderrDetectMorality) | 
            stderrLieMoralityIdiot == min(stderrLieMoralityIdiot))
+m.df
 
 lieMoral = 20
 detectMoral = 8
 ```
 
+```{r}
+m.df
+# Plot std err across lying penalties
+m.df %>%
+  ggplot() +
+  geom_point(aes(x=mor, y=stderrLieMorality), colour="red") +
+  geom_line(aes(x=mor, y=stderrLieMorality), colour="red") +
+  geom_point(filter(m.df, stderrLieMorality==min(stderrLieMorality)), mapping=aes(x=mor, y=stderrLieMorality), colour="darkred") +
+  geom_point(aes(x=mor, y=stderrDetectMorality*4), colour="lightblue") +
+  geom_line(aes(x=mor, y=stderrDetectMorality*4), colour="lightblue") +
+  geom_point(filter(m.df, stderrDetectMorality==min(stderrDetectMorality)), mapping=aes(x=mor, y=stderrDetectMorality*4), colour="blue") +
+  scale_y_continuous("Std Err Lie Morality", limits=c(1.5,2.5), 
+                     sec.axis=sec_axis(~.*.25, name="Std Err Detect Morality")) +
+  theme_minimal()
+```
+
+```{r}
+df.unif
+
+residSumLiar = function(morVal){
+  prediction <- df.unif %>%
+    filter(role == "Liar", mor == morVal) %>%
+    mutate(probabilityRed = p,
+           drawnRed = ks,
+           predicted = val) %>%
+    select(expt, probabilityRed, drawnRed, predicted)
+  real <- bs.final %>%
+    filter(roleCurrent == "bullshitter") %>%
+    select(expt, probabilityRed, drawnRed, reportedDrawn)
+  left_join(real, prediction, by=c("expt", "probabilityRed", "drawnRed")) %>%
+    mutate(error = reportedDrawn - predicted) %>%
+    summarise(n = n(),
+              residsum = sum(error^2),
+              loglik = -(n/2)*log(residsum/n)) %>%
+    .$loglik
+}
+
+residSumDetector = function(morVal){
+  prediction <- df.unif %>%
+    filter(role == "Detector", mor == morVal) %>%
+    mutate(probabilityRed = p,
+           reportedDrawn = ks,
+           predicted = val) %>%
+    select(expt, probabilityRed, reportedDrawn, predicted)
+  real <- bs.final %>%
+    filter(roleCurrent == "bullshitDetector") %>%
+    select(expt, probabilityRed, reportedDrawn, callBS) %>%
+    mutate(callBS = ifelse(callBS=="True", 1, 0))
+  left_join(real, prediction, by=c("expt", "probabilityRed", "reportedDrawn")) %>%
+    mutate(error = callBS - predicted) %>%
+    summarise(n = n(),
+              residsum = sum(error^2),
+              loglik = -(n/2)*log(residsum/n)) %>%
+    .$loglik
+}
+
+
+likelihood.df <- data.frame(mor = min(df.unif$mor):max(df.unif$mor)) %>%
+  mutate(ll.lie = mapply(residSumLiar, mor),
+         ll.detect = mapply(residSumDetector, mor)) %>%
+  drop_na()
+
+
+ggplot(likelihood.df) +
+  geom_point(aes(x=mor, y=ll.lie), colour="red") +
+  geom_line(aes(x=mor, y=ll.lie), colour="red") +
+  geom_point(aes(x=mor, y=ll.detect), colour="lightblue") +
+  geom_line(aes(x=mor, y=ll.detect), colour="lightblue") +
+  scale_y_continuous("Log Likelihood Lie Morality", 
+                     sec.axis=sec_axis(~.*1, name="Std Err Detect Morality")) +
+  theme_minimal()
+
+filter(likelihood.df, ll.detect==max(likelihood.df$ll.detect))
+filter(likelihood.df, ll.lie==max(likelihood.df$ll.lie))
+
+
+ll.lie.df.prev <- likelihood.df %>%
+  filter(mor >= 19 & mor <= 20) %>%
+  mutate(mor=mor+1,
+         ll.lie.prev = ll.lie) %>%
+  select(mor, ll.lie.prev)
+ll.lie.A <- likelihood.df %>%
+  filter(mor >= 20 & mor <= 21) %>%
+  select(mor, ll.lie) %>%
+  left_join(ll.lie.df.prev) %>%
+  mutate(diff.bw = -ll.lie-(-ll.lie.prev)) %>%
+  summarise(diff = diff(diff.bw)) %>%
+  .$diff
+
+ll.detect.df.prev <- likelihood.df %>%
+  filter(mor >= 7 & mor <= 8) %>%
+  mutate(mor=mor+1,
+         ll.detect.prev = ll.detect) %>%
+  select(mor, ll.detect.prev)
+ll.detect.A <- likelihood.df %>%
+  filter(mor >= 8 & mor <= 9) %>%
+  select(mor, ll.detect) %>%
+  left_join(ll.detect.df.prev) %>%
+  mutate(diff.bw = -ll.detect-(-ll.detect.prev)) %>%
+  summarise(diff = diff(diff.bw)) %>%
+  .$diff
+
+(se.lie.A = sqrt(1/ll.lie.A))
+(se.detect.A = sqrt(1/ll.detect.A))
+
+data.frame(role = c("sender", "receiver"),
+           estimate = c(20, 8),
+           std.err = c(se.lie.A, se.detect.A)) %>%
+  mutate(lower = estimate-std.err,
+         upper = estimate+std.err) %>%
+  ggplot(aes(x=role, y=estimate)) +
+  geom_bar(stat="identity") +
+  geom_errorbar(aes(ymin=lower, ymax=upper))
+
+wald.z.test(20, se.lie.A, 8, se.detect.A)
+```
 
 # Pretty Plots
 
@@ -360,7 +517,7 @@ lie.results_expt4 <- bs.final %>%
   geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.3) +
   geom_line(size=0.8, alpha=alphaLine) +
   geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
-  ggtitle("Red Utility") +
+  ggtitle("Red Payoff") +
   #scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   #scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   scale_colour_manual(values = condColors.diff) +
@@ -394,7 +551,7 @@ detect.results_expt4 <- bs.final %>%
   #scale_x_continuous("", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   #scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
   scale_x_continuous("Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
-  scale_y_continuous("Proportion BS Called", limits=c(0,1), expand=c(0,0)) +
+  scale_y_continuous("Receiver Prop. BS Called", limits=c(0,1), expand=c(0,0)) +
   scale_colour_manual(values = condColors.diff, guide="none") +
   scale_fill_manual(values = condColors.diff) +
   theme_minimal() +
@@ -424,7 +581,7 @@ lie.results_expt5 <- bs.final %>%
   geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.3) +
   geom_line(size=0.8, alpha=alphaLine) +
   geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
-  ggtitle("Blue Utility") +
+  ggtitle("Blue Payoff") +
   scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   scale_colour_manual(values = condColors.diff) +
@@ -550,15 +707,15 @@ withLegend_nomoral <- ggdraw() +
 ggsave("img/detectPredictions.pdf", 
        withLegend_nomoral, 
        units="cm", height=4.7, width=17.8)
+```
 
 
 
 
-
-
-detectplots_results <- plot_grid( detect.results_expt4 + ggtitle("Red Response") + theme(plot.margin = marginDim,
+```{r}
+detectplots_results <- plot_grid(detect.results_expt4 + ggtitle("Red Utility") + theme(plot.margin = marginDim,
         plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold")),
-                         detect.results_expt5 + ggtitle("Blue Response") + theme(plot.margin = marginDim,
+                         detect.results_expt5 + ggtitle("Blue Utility") + theme(plot.margin = marginDim,
         plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold")), 
                          nrow=1,
                          rel_widths=c(11.32, 10))
@@ -916,8 +1073,8 @@ shapeCompare <- c(
 )
 
 shapeCompare2 <- c(
-  "red utility" = 19,
-  "blue utility" = 1
+  "red payoff" = 19,
+  "blue payoff" = 1
 )
 
 #Broken down by graphs
@@ -931,7 +1088,7 @@ lieCompUnif <- modelVsHuman %>%
   #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.1) +
   ggtitle("Random Opponent") +
   scale_x_continuous("Model", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
-  scale_y_continuous("Human", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("Human Sender\nMean Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
   scale_colour_manual(values=condColors.diff) +
   scale_shape_manual(values=shapeCompare) +
   guides(colour=guide_legend(title="", override.aes=list(size=2.5))) +
@@ -954,7 +1111,7 @@ lieCompRecurse <- modelVsHuman %>%
   geom_point(size=2, alpha=0.9) +
   geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1) +
   #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.1) +
-  ggtitle("Recursive") +
+  ggtitle("Recursive ToM") +
   scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
   scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
   scale_colour_manual(values=condColors.diff) +
@@ -978,7 +1135,7 @@ lieCompAverse <- modelVsHuman %>%
   geom_point(size=2, alpha=0.9) +
   geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1) +
   #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.1) +
-  ggtitle("Recursive + Aversion") +
+  ggtitle("Recursive ToM + Aversion") +
   scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
   scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
   scale_colour_manual(values=condColors.diff) +
@@ -998,14 +1155,14 @@ lieCompAverse
 detectCompUnif <- modelVsHuman %>%
   filter(role=="Detector", model=="random opponent") %>%
   mutate(p.txt = paste("p =", p),
-         expt = factor(ifelse(expt == "expt4", "red utility", "blue utility"), levels=c("red utility", "blue utility"))) %>%
+         expt = factor(ifelse(expt == "expt4", "red payoff", "blue payoff"), levels=c("red payoff", "blue payoff"))) %>%
   ggplot(aes(x=mean.model, y=mean.human, colour=p.txt, shape=expt)) +
   geom_abline(intercept = 0, slope = 1, linetype=2) +
   geom_point(size=2, alpha=0.9) +
   geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02) +
   #geom_errorbarh(aes(xmin=mean.model-se.model, xmax=mean.model+se.model), height=.02) +
   scale_x_continuous("Model", limits=c(0,1), expand=c(0,0,0.025,0)) +
-  scale_y_continuous("Human", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("Human Receiver\nProportion BS Called", limits=c(0,1), expand=c(0,0,0.025,0)) +
   scale_colour_manual(values=condColors.diff, guide="none") +
   scale_shape_manual(values=shapeCompare2, guide="none") +
   guides(shape=guide_legend(title="", override.aes=list(size=2.5))) +
@@ -1079,21 +1236,21 @@ lieCompPlots <- plot_grid(lieCompUnif,
                           lieCompRecurse,
                           lieCompAverse + theme(legend.position="none"), 
                           nrow=1,
-                          rel_widths=c(10.9, 10, 10))
+                          rel_widths=c(11.5, 10, 10))
 
 detectCompPlots <- plot_grid(detectCompUnif + theme(legend.position="none"),
                              detectCompRecurse,
                              detectCompAverse, 
                              nrow=1,
-                             rel_widths=c(10.9, 10, 10))
+                             rel_widths=c(11.5, 10, 10))
 
 liarCompLabel <- ggdraw() +
-  draw_label("Sender", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270)
+  draw_label("", fontface="bold", size=12, y=0.9, x=0.5, hjust=0, angle=270)
 
 lieComprow <- plot_grid(lieCompPlots, liarCompLabel, nrow=1, rel_widths=c(96, 4))
 
 detectorCompLabel <- ggdraw() +
-  draw_label("Receiver", fontface="bold", size=12, y=0.99, x=0.5, hjust=0, angle=270)
+  draw_label("", fontface="bold", size=12, y=0.99, x=0.5, hjust=0, angle=270)
 
 detectComprow <- plot_grid(detectCompPlots, detectorCompLabel, nrow=1, rel_widths=c(96, 4))
 
@@ -1106,17 +1263,227 @@ CompwithLegend <- ggdraw() +
   draw_plot(allCompplots) +
   draw_plot(legendComp, x=0.41, y=0.16) +
   draw_plot(legendComp2, x=0.41, y=0.25) +
-  draw_label(expression(paste("r"^"2"*" = 0.118")), x=0.135, y=0.93, size=11) +
-  draw_label(expression(paste("r"^"2"*" = 0.477")), x=0.45, y=0.93, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.118")), x=0.15, y=0.93, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.477")), x=0.455, y=0.93, size=11) +
   draw_label(expression(paste("r"^"2"*" = 0.965")), x=0.76, y=0.93, size=11) +
-  draw_label(expression(paste("r"^"2"*" = 0.237")), x=0.135, y=0.455, size=11) +
-  draw_label(expression(paste("r"^"2"*" = 0.596")), x=0.45, y=0.455, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.237")), x=0.15, y=0.455, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.596")), x=0.455, y=0.455, size=11) +
   draw_label(expression(paste("r"^"2"*" = 0.730")), x=0.76, y=0.455, size=11)
 
 CompwithLegend
 ggsave("img/allComparisons.pdf", 
        CompwithLegend, 
-       units="cm", height=12.2, width=17.8)
+       units="cm", height=11, width=17.8)
+```
+
+```{r}
+plotTitleSizeComp = 12
+axisTitleSizeComp = 10
+axisTextSizeComp = 9
+pointSize = 2
+lineThick = 0.5
+
+sender_points_label = c(
+  "expt4" = "Sender gets\npoints for red",
+  "expt5" = "Sender gets\npoints for blue"
+)
+
+shapeCompare <- c(
+  # "expt4" = 19,
+  # "expt5" = 21
+  "expt4" = 22,
+  "expt5" = 24
+)
+
+#Broken down by graphs
+lieCompUnif <- modelVsHuman %>%
+  filter(role=="Liar", model=="random opponent") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=p.txt, shape=expt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1, size=lineThick) +
+  geom_point(size=pointSize, alpha=0.9, colour="black", stroke=lineThick) +
+  ggtitle("Random Opponent") +
+  scale_x_continuous("Model", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("Human Sender\nMean Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=my_red) +
+  scale_shape_manual(values=shapeCompare) +
+  guides(fill=guide_legend(title="", override.aes=list(size=2.5))) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size=plotTitleSizeComp, face = "bold"),
+        plot.margin = marginDim,
+        axis.title = element_text(size=axisTitleSizeComp),
+        axis.text = element_text(size=axisTextSizeComp),
+        axis.text.y = element_text(margin=margin(0,0,0,5)),
+        axis.line = element_line(size=1, colour=axisLineColour))
+lieCompUnif
+#ggsave("img/lieCompareUnif.png", lieCompUnif, height=4.1, width=4)
+
+lieCompRecurse <- modelVsHuman %>%
+  filter(role=="Liar", model=="recursive ") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=p.txt, shape=expt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1, size=lineThick) +
+  geom_point(size=pointSize, alpha=0.9, stroke=lineThick) +
+  ggtitle("Recursive ToM") +
+  scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=my_red) +
+  scale_shape_manual(values=shapeCompare) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size=plotTitleSizeComp, face = "bold"),
+        plot.margin = marginDim,
+        axis.title = element_text(size=axisTitleSizeComp),
+        axis.text = element_text(size=axisTextSizeComp),
+        axis.line = element_line(size=1, colour=axisLineColour))
+lieCompRecurse
+#ggsave("img/lieCompareRecurse.png", lieCompRecurse, height=4.1, width=4)
+
+lieCompAverse <- modelVsHuman %>%
+  filter(role=="Liar", model=="recursive+aversion") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=p.txt, shape=expt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.1, size=lineThick) +
+  geom_point(size=pointSize, alpha=0.9, stroke=lineThick) +
+  ggtitle("Recursive ToM + Aversion") +
+  scale_x_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("", labels=rep("",6), limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=my_red) +
+  scale_shape_manual(values=shapeCompare) +
+  theme_minimal() +
+  theme(legend.position="none",
+        plot.title = element_text(size=plotTitleSizeComp, face = "bold"),
+        plot.margin = marginDim,
+        axis.title = element_text(size=axisTitleSizeComp),
+        axis.text = element_text(size=axisTextSizeComp),
+        axis.line = element_line(size=1, colour=axisLineColour))
+lieCompAverse
+#ggsave("img/lieCompareAverse.png", lieCompAverse, height=4.1, width=4)
+
+detectCompUnif <- modelVsHuman %>%
+  filter(role=="Detector", model=="random opponent") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=p.txt, shape=expt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02, size=lineThick) +
+  geom_point(size=pointSize, alpha=0.9, stroke=lineThick) +
+  scale_x_continuous("Model", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("Human Receiver\nProportion BS Called", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=my_red, guide="none") +
+  scale_shape_manual(values=shapeCompare, labels=sender_points_label) +
+  guides(shape=guide_legend(title="", override.aes=list(size=2.5))) +
+  theme_minimal() +
+  theme(legend.key.size = unit(0.34, 'cm'),
+        legend.text = element_text(size=7),
+        #legend.text.align = 1,
+        legend.box = "horizontal",
+        plot.title = element_text(size=plotTitleSize, face = "bold"),
+        plot.margin = marginDim,
+        axis.title = element_text(size=axisTitleSizeComp),
+        axis.text = element_text(size=axisTextSizeComp),
+        axis.text.y = element_text(margin=margin(0,-0.5,0,-2)),
+        axis.line = element_line(size=1, colour=axisLineColour))
+detectCompUnif
+#ggsave("img/detectCompareUnif.png", detectCompUnif, height=4.1, width=4)
+
+detectCompRecurse <- modelVsHuman %>%
+  filter(role=="Detector", model=="recursive ") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=p.txt, shape=expt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02, size=lineThick) +
+  geom_point(size=pointSize, alpha=0.9, stroke=lineThick) +
+  scale_x_continuous("", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=my_red, guide="none") +
+  scale_shape_manual(values=shapeCompare, guide="none") +
+  theme_minimal() +
+  theme(legend.key.size = unit(0.34, 'cm'),
+        legend.text = element_text(size=7),
+        legend.box = "horizontal",
+        plot.title = element_text(size=plotTitleSize, face = "bold"),
+        plot.margin = marginDim,
+        axis.title = element_text(size=axisTitleSizeComp),
+        axis.text = element_text(size=axisTextSizeComp),
+        axis.line = element_line(size=1, colour=axisLineColour))
+detectCompRecurse
+#ggsave("img/detectCompareRecurse.png", detectCompRecurse, height=4.1, width=4)
+
+detectCompAverse <- modelVsHuman %>%
+  filter(role=="Detector", model=="recursive+aversion") %>%
+  mutate(p.txt = paste("p =", p)) %>%
+  ggplot(aes(x=mean.model, y=mean.human, fill=p.txt, shape=expt)) +
+  geom_abline(intercept = 0, slope = 1, linetype=2) +
+  geom_errorbar(aes(ymin=mean.human-se.human, ymax=mean.human+se.human), width=.02, size=lineThick) +
+  geom_point(size=pointSize, alpha=0.9, stroke=lineThick) +
+  scale_x_continuous("", limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0,0.025,0)) +
+  scale_fill_manual(values=my_red, labels=p_label) +
+  scale_shape_manual(values=shapeCompare, guide="none") +
+  guides(fill=guide_legend(title="Base Rate", override.aes=list(size=2, shape=21))) +
+  theme_minimal() +
+  theme(legend.key.size = unit(0.34, 'cm'),
+        legend.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.box = "horizontal",
+        plot.title = element_text(size=plotTitleSize, face = "bold"),
+        plot.margin = marginDim,
+        axis.title = element_text(size=axisTitleSizeComp),
+        axis.text = element_text(size=axisTextSizeComp),
+        axis.line = element_line(size=1, colour=axisLineColour))
+detectCompAverse
+#ggsave("img/detectCompareAverse.png", detectCompAverse, height=4.1, width=4)
+
+
+legendComp <- get_legend(detectCompAverse)
+legendComp2 <- get_legend(detectCompUnif)
+
+lieCompPlots <- plot_grid(lieCompUnif,
+                          lieCompRecurse,
+                          lieCompAverse + theme(legend.position="none"), 
+                          nrow=1,
+                          rel_widths=c(11.5, 10, 10))
+
+detectCompPlots <- plot_grid(detectCompUnif + theme(legend.position="none"),
+                             detectCompRecurse,
+                             detectCompAverse + theme(legend.position="none"), 
+                             nrow=1,
+                             rel_widths=c(11.5, 10, 10))
+
+liarCompLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.9, x=0.5, hjust=0, angle=270)
+
+lieComprow <- plot_grid(lieCompPlots, liarCompLabel, nrow=1, rel_widths=c(96, 4))
+
+detectorCompLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.99, x=0.5, hjust=0, angle=270)
+
+detectComprow <- plot_grid(detectCompPlots, detectorCompLabel, nrow=1, rel_widths=c(96, 4))
+
+allCompplots <- plot_grid(lieComprow, 
+                      detectComprow, 
+                      nrow=2,
+                      rel_heights=c(0.525, 0.475))
+
+CompwithLegend <- ggdraw() +
+  draw_plot(allCompplots) +
+  draw_plot(legendComp, x=0.43, y=0.25) +
+  draw_plot(legendComp2, x=0.41, y=0.135) +
+  draw_label(expression(paste("r"^"2"*" = 0.118")), x=0.15, y=0.93, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.477")), x=0.455, y=0.93, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.965")), x=0.76, y=0.93, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.237")), x=0.15, y=0.455, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.596")), x=0.455, y=0.455, size=11) +
+  draw_label(expression(paste("r"^"2"*" = 0.730")), x=0.76, y=0.455, size=11)
+
+CompwithLegend
+ggsave("img/allComparisons.pdf", 
+       CompwithLegend, 
+       units="cm", height=11, width=17.8)
 ```
 
 ## Compute R^2
@@ -1772,12 +2139,17 @@ detectMLE.pred <- data.frame(p=as.factor(rep(c(0.2,0.5,0.8),2)),
                                filter(quadr.summ_expt5, probabilityRed==0.5 & variable=="b")$std.err,
                                filter(quadr.summ_expt5, probabilityRed==0.8 & variable=="b")$std.err))
 
+detectMLE.pred %>%
+  mutate(CIlower = b - 1.96*b.se,
+         CIupper = b + 1.96*b.se)
 
 matr_b.se <- matrix(detectMLE.pred$b.se, 3, dimnames=list(c("p=0.2","p=0.5","p=0.8"), c("red","blue")))
 matr_b.mean <- matrix(detectMLE.pred$b, 3, dimnames=list(c("p=0.2","p=0.5","p=0.8"), c("red","blue")))
 
 
 (truechi <- chisqu_util(as.vector(matr_b.mean), as.vector(matr_b.se)))
+
+
 (pchi <- pchisq(truechi, df=4, lower.tail=FALSE))
 
 # do thissss
@@ -1810,6 +2182,365 @@ ggplot(orderedSim, aes(x=chisq)) +
   geom_vline(xintercept=orderedSim$chisq[9500], colour="red") +
   ggtitle("Simulated chi-square (df=4) distribution")
 ```
+
+```{r}
+detectParamPlot <- detectMLE.pred %>%
+  mutate(p = as.numeric(as.character(p)),
+         payoff = ifelse(expt=="expt4", "red payoff", "blue payoff")) %>%
+  bind_rows(data.frame(p=c(0.2,0.5,0.8), 
+                       payoff="null", 
+                       b=c(2, 5, 8))) %>%
+  mutate(p.fact=paste("p =",p),
+         payoff=fct_relevel(payoff, c("red payoff", "blue payoff", "null")),
+         compare=ifelse(payoff=="null", TRUE, FALSE)) %>%
+  ggplot(aes(x=p, y=b, pch=payoff)) +
+  geom_line(aes(lty=compare)) +
+  geom_errorbar(aes(x=p, y=b, ymin=b-2*b.se, ymax=b+2*b.se), width=0.05) +
+  geom_point(aes(fill=p.fact), size=2) +
+  scale_x_continuous("Base Rate Probability", limits=c(0,1), breaks=seq(0,1,0.1), expand=c(0,0)) +
+  scale_y_continuous("Reported Marbles", limits=c(0,10), breaks=c(2,5,8), expand=c(0,0)) +
+  scale_shape_manual(values=c(22,24,21)) +
+  scale_linetype_discrete(guide="none") +
+  scale_fill_manual(values = condColors.diff, guide="none") +
+  guides(shape=guide_legend(title="")) +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        #axis.title.y = element_text(angle=0, vjust=0.5),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+legend_param <- get_legend(detectParamPlot)
+
+# pair results with model parameter
+
+detectplots_results <- plot_grid( 
+  detect.results_expt4 + ggtitle("Red Payoff") + theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold")),
+  detect.results_expt5 + ggtitle("Blue Payoff") + theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold")), 
+                         nrow=1,
+                         rel_widths=c(11.32, 10))
+
+detectplots_results_full <- plot_grid(detectplots_results,
+                                      detectParamPlot + ggtitle("") + theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        legend.position="none"),
+        nrow=2,
+                         rel_heights=c(1,1.5))
+
+detectorLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.94, x=0.5, hjust=0, angle=270)
+
+detectrow_results <- plot_grid(detectplots_results_full, detectorLabel, nrow=1, rel_widths=c(94, 6))
+
+withLegend_results <- ggdraw() +
+  draw_plot(detectrow_results) +
+  draw_plot(legend, x=0.38, y=0.02) +
+  draw_plot(legend_param, x=0.35, y=-0.3) +
+  draw_label("a)", size=10, x=0.1, y=0.98) +
+  draw_label("b)", size=10, x=0.1, y=0.58)
+  
+ggsave("img/detectResultsParam.pdf", 
+       withLegend_results, 
+       units="cm", height=10, width=8.7)
+
+```
+
+
+```{r}
+detect.results_expt5 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt5") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_ribbon(aes(ymin=prop-se, ymax=prop+se), alpha=0.3) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_point(pch=21, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  scale_x_continuous("Reported Marbles", limits=c(0,10), breaks=seq(0,10,1), expand=c(0,0)) +
+  scale_y_continuous("Receiver Prop. BS Called", limits=c(0,1), expand=c(0,0)) + 
+  scale_colour_manual(values = condColors.diff) +
+  scale_fill_manual(values = condColors.diff) +
+  guides(fill=guide_legend(title="", override.aes=list(size=2.5)), colour="none") +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        legend.position = "top",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+#HERE
+detectParamPlot <- detectMLE.pred %>%
+  mutate(p = as.numeric(as.character(p)),
+         payoff = ifelse(expt=="expt4", "red payoff", "blue payoff")) %>%
+  bind_rows(data.frame(p=c(0.2,0.5,0.8), 
+                       payoff="null", 
+                       b=c(2, 5, 8))) %>%
+  mutate(p.fact=paste("p =",p),
+         payoff=fct_relevel(payoff, c("red payoff", "null", "blue payoff")),
+         compare=ifelse(payoff=="null", TRUE, FALSE)) %>%
+  ggplot(aes(x=b, y=p, pch=payoff)) +
+  geom_line(aes(lty=compare)) +
+  geom_errorbarh(aes(x=b, y=p, xmin=b-2*b.se, xmax=b+2*b.se), height=0.06) +
+  geom_point(aes(fill=p.fact), size=2) +
+  scale_y_continuous("Base Rate Probability", limits=c(0,1), breaks=c(0.2,0.5,0.8), expand=c(0,0)) +
+  scale_x_continuous("Expected Least BS Called Reported Marbles", limits=c(0,10), breaks=seq(0,10,1), expand=c(0,0)) +
+  scale_shape_manual(values=c(22,21,24)) +
+  scale_linetype_discrete(guide="none") +
+  scale_fill_manual(values = condColors.diff, guide="none") +
+  guides(shape=guide_legend(title="")) +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        legend.position="top",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        #axis.title.y = element_text(angle=0, vjust=0.5),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.text.y = element_text(margin=margin(0,4.5,0,2)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+legend_param <- get_legend(detectParamPlot)
+legend_horiz <- get_legend(detect.results_expt5)
+
+# pair results with model parameter
+
+detectplots_results_full <- plot_grid( 
+  detect.results_expt4 + ggtitle("Red Payoff") + 
+    scale_x_continuous("Reported Marbles", limits=c(0,10), breaks=seq(0,10,1), expand=c(0,0)) +
+    theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.05, face = "bold")),
+  ggdraw(),
+  detect.results_expt5 + ggtitle("Blue Payoff") + 
+    theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.05, face = "bold"),
+        legend.position="none"), 
+  ggdraw(),
+  detectParamPlot + ggtitle("Trough Parameter") + theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.05, face = "bold"),
+        legend.position="none"),
+  nrow=5,
+  rel_heights=c(1, 0.01, 1, 0.05, 1.5))
+
+detectorLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.94, x=0.5, hjust=0, angle=270)
+
+detectrow_results <- plot_grid(detectplots_results_full, detectorLabel, nrow=1, rel_widths=c(94, 6))
+
+withLegend_results <- ggdraw() +
+  draw_plot(detectrow_results) +
+  draw_plot(legend_horiz, x=0.04, y=0.45) +
+  draw_plot(legend_param, x=0.04, y=-0.12) +
+  draw_label("a)", size=10, x=0.1, y=0.99) +
+  draw_label("b)", size=10, x=0.1, y=0.705) +
+  draw_label("c)", size=10, x=0.1, y=0.41)
+  
+ggsave("img/detectResultsParam_horiz.pdf", 
+       withLegend_results, 
+       units="cm", height=18, width=8.7)
+
+```
+
+```{r}
+detect.results_expt4 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt4") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, expt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_ribbon(aes(ymin=prop-se, ymax=prop+se), alpha=0.3, colour="gray32", size=0.25) +
+  geom_point(shape=22, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  #scale_x_continuous("", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  #scale_y_continuous("", labels=rep("",5), limits=c(0,1), expand=c(0,0)) +
+  scale_x_continuous("Reported Marbles", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_y_continuous("Receiver Prop. BS Called", limits=c(0,1), expand=c(0,0)) +
+  scale_colour_manual(values = my_red, guide="none") +
+  scale_fill_manual(values = my_red) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+detect.results_expt5 <- bs.final %>%
+  filter(roleCurrent == "bullshitDetector", expt=="expt5") %>%
+  mutate(probabilityRed.txt = paste("p =", probabilityRed)) %>%
+  group_by(probabilityRed.txt, reportedDrawn) %>%
+  summarise(prop = (sum(callBS == "True")+1)/(n()+2),
+            se = sqrt((prop*(1-prop)/n())),
+            n = n()) %>%
+  filter(n > 3) %>%
+  ggplot(aes(x=reportedDrawn, y=prop, colour=probabilityRed.txt, fill=probabilityRed.txt)) +
+  geom_line(size=0.8, alpha=alphaLine) +
+  geom_ribbon(aes(ymin=prop-se, ymax=prop+se), alpha=0.3, colour="gray32", size=0.25) +
+  geom_point(shape=24, stroke=0.5, size=1.5, colour="black", alpha=alphaLine) +
+  scale_x_continuous("Reported Marbles", limits=c(0,10), breaks=seq(0,10,1), expand=c(0,0)) +
+  scale_y_continuous("Receiver Prop. BS Called", limits=c(0,1), expand=c(0,0)) + 
+  scale_colour_manual(values = my_red) +
+  scale_fill_manual(values = my_red, labels=p_label) +
+  guides(colour="none", fill=guide_legend(title="Base Rate:", override.aes=list(size=2, linetype=0, shape=21))) +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        legend.position = "top",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+#HERE2
+detectParamPlot <- detectMLE.pred %>%
+  mutate(p = as.numeric(as.character(p)),
+         payoff = ifelse(expt=="expt4", "Sender gets\npoints for red", "Sender gets\npoints for blue")) %>%
+  bind_rows(data.frame(p=c(0.2,0.5,0.8), 
+                       payoff="null", 
+                       b=c(2, 5, 8))) %>%
+  mutate(p.fact=paste("p =",p),
+         payoff=fct_relevel(payoff, c("Sender gets\npoints for red", "null", "Sender gets\npoints for blue")),
+         compare=ifelse(payoff=="null", TRUE, FALSE)) %>%
+  ggplot(aes(x=b, y=p, pch=payoff)) +
+  geom_line(aes(lty=compare)) +
+  geom_errorbarh(aes(x=b, y=p, xmin=b-2*b.se, xmax=b+2*b.se), height=0.06) +
+  geom_point(aes(fill=p.fact), size=2) +
+  scale_y_continuous("Base Rate Probability", limits=c(0,1), breaks=c(0.2,0.5,0.8), expand=c(0,0)) +
+  scale_x_continuous("Implied Mode of Distribution of True Reports", limits=c(0,10), breaks=seq(0,10,1), expand=c(0,0)) +
+  scale_shape_manual(values=c(22,21,24)) +
+  scale_linetype_discrete(guide="none") +
+  scale_fill_manual(values = my_red, guide="none") +
+  guides(shape=guide_legend(title="")) +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        legend.position="top",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize),
+        axis.title = element_text(size=axisTitleSize),
+        #axis.title.y = element_text(angle=0, vjust=0.5),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.text.y = element_text(margin=margin(0,4.5,0,2)),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+legend_param <- get_legend(detectParamPlot)
+legend_horiz <- get_legend(detect.results_expt5)
+
+# pair results with model parameter
+
+detectplots_results_full <- plot_grid( 
+  detect.results_expt4 + ggtitle("Sender Gets Points for Red") + 
+    scale_x_continuous("Reported Marbles", limits=c(0,10), breaks=seq(0,10,1), expand=c(0,0)) +
+    theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.05, face = "bold")),
+  ggdraw(),
+  detect.results_expt5 + ggtitle("Sender Gets Points for Blue") + 
+    theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.05, face = "bold"),
+        legend.position="none"), 
+  ggdraw(),
+  detectParamPlot + ggtitle("Receiver's Believed Mode of True Reports") + theme(plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.05, face = "bold"),
+        legend.position="none"),
+  nrow=5,
+  rel_heights=c(1, 0.01, 1, 0.05, 1.5))
+
+detectorLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.94, x=0.5, hjust=0, angle=270)
+
+detectrow_results <- plot_grid(detectplots_results_full, detectorLabel, nrow=1, rel_widths=c(94, 6))
+
+withLegend_results <- ggdraw() +
+  draw_plot(detectrow_results) +
+  draw_plot(legend_horiz, x=0.04, y=0.45) +
+  draw_plot(legend_param, x=0.04, y=-0.14) +
+  draw_label("a)", size=10, x=0.1, y=0.99) +
+  draw_label("b)", size=10, x=0.1, y=0.705) +
+  draw_label("c)", size=10, x=0.1, y=0.41)
+  
+ggsave("img/detectResultsParam_horiz2.pdf", 
+       withLegend_results, 
+       units="cm", height=16, width=8.7)
+```
+
+```{r}
+# ANOVA
+
+matr_b.se
+matr_b.mean
+
+
+## compare utility conditions - z-test
+twosampztest <- function(mu1, sd1, mu2, sd2){
+  (mu1 - mu2)/sqrt(sd1^2 + sd2^2)
+}
+
+sumsd <- function(sds){
+  sqrt(sum(sds^2)/3^2)
+}
+
+# differences between utility conditions
+z_mean.b <- twosampztest(mean(matr_b.mean[,'red']), sumsd(matr_b.se[,'red']),
+             mean(matr_b.mean[,'blue']), sumsd(matr_b.se[,'blue']))
+z_mean.b
+2*pnorm(z_mean.b, lower.tail=TRUE)
+
+z_0.2.red.null <- twosampztest(matr_b.mean['p=0.2','red'], matr_b.se['p=0.2','red'],
+                      2, 0)
+z_0.2.red.null
+2*pnorm(z_0.2.red.null, lower.tail=FALSE)
+
+z_0.2.blue.null <- twosampztest(matr_b.mean['p=0.2','blue'], matr_b.se['p=0.2','blue'],
+                      2, 0)
+z_0.2.blue.null
+2*pnorm(z_0.2.blue.null, lower.tail=FALSE)
+
+
+z_0.5.red.null <- twosampztest(matr_b.mean['p=0.5','red'], matr_b.se['p=0.5','red'],
+                      5, 0)
+z_0.5.red.null
+2*pnorm(z_0.5.red.null, lower.tail=TRUE)
+
+z_0.5.blue.null <- twosampztest(matr_b.mean['p=0.5','blue'], matr_b.se['p=0.5','blue'],
+                      5, 0)
+z_0.5.blue.null
+2*pnorm(z_0.5.blue.null, lower.tail=FALSE)
+
+
+z_0.8.red.null <- twosampztest(matr_b.mean['p=0.8','red'], matr_b.se['p=0.8','red'],
+                      8, 0)
+z_0.8.red.null
+2*pnorm(z_0.8.red.null, lower.tail=TRUE)
+
+z_0.8.blue.null <- twosampztest(matr_b.mean['p=0.8','blue'], matr_b.se['p=0.8','blue'],
+                      8, 0)
+z_0.8.blue.null
+2*pnorm(z_0.8.blue.null, lower.tail=FALSE)
+```
+
+
 
 
 ```{r message=FALSE, warning=FALSE}
@@ -1848,9 +2579,9 @@ lieLogisticBinom <- function(k, kstar, beta, mu, alph){
   p.lie = p.lie.k(k, beta, mu)
   ifelse(k == kstar, 1 - p.lie, p.lie * p.kstar.k(k, kstar, alph))
 }
+.005
+lieLogisticBinom(humanLie$drawnRed[1], humanLie$reportedDrawn[1], .02, 63, -0.6)
 
-
-#lieLogisticBinom(5,6,2,1,5,2,5,0)
 
 nLL <- function(beta, mu0.2_4, alph0.2_4,
                       mu0.5_4, alph0.5_4,
@@ -1910,7 +2641,11 @@ fit <- summary(mle(nLL,
                       alph0.8_5=rnorm(1, 0, 0.5)),
            method = "BFGS"))
 fit
+round(coef(fit),5)
 ```
+
+
+
 
 ```{r}
 binom.p <- function(kstar, alph){
@@ -2053,6 +2788,7 @@ lieColors = c("truth" = "springgreen3",
 
 propLieGiven <- bs.final %>%
   filter(expt %in% c("expt4","expt5"), roleCurrent == "bullshitter") %>%
+  mutate(probabilityRed = factor(paste0((probabilityRed*100), "% red"))) %>%
   group_by(expt, probabilityRed, drawnRed, reportedDrawn) %>%
   summarise(n=n()) %>%
   ungroup() %>%
@@ -2064,25 +2800,54 @@ propLieGiven <- bs.final %>%
          logitprop = log(prop/(1-prop)),
          lie = ifelse(drawnRed != reportedDrawn, "lie", "truth"))
 
-propLieGiven %>%
+p4 <- propLieGiven %>%
   filter(expt == "expt4") %>%
   ggplot(aes(x=reportedDrawn, y=prop, fill=lie)) +
   geom_bar(stat="identity") +
-  ggtitle("Expt 4 k* | k") +
-  scale_fill_manual(values=lieColors) +
-  coord_flip() +
-  facet_grid(probabilityRed ~ drawnRed)
+  ggtitle("Sender Gets Points for Red") +
+  scale_x_continuous("Reported Value", breaks=seq(0,10,2)) +
+  scale_y_continuous("Proportion of Reports Conditioned on True Value", breaks=seq(0,1,0.5), labels=c("0","0.5","1")) +
+  scale_fill_manual("",values=lieColors) +
+  coord_flip(clip="off") +
+  facet_grid(probabilityRed ~ drawnRed) +
+  theme_bw() +
+  theme(axis.text = element_text(size=8)) +
+  geom_text(data=data.frame(probabilityRed="20% red", drawnRed=0, lie=NA), x=13, y=-1.15, size=2.5, hjust=0, label="True\nSample:")
+g4 <- ggplot_gtable(ggplot_build(p4))
+stripr <- which(grepl('strip-r', g4$layout$name))
+k <- 1
+for (i in stripr) {
+  j <- which(grepl('rect', g4$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g4$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- my_red[k]
+  k <- k+1
+}
+
+ggsave("img/lieSpike/raw_modelLieSpike_expt4.png", g4, width=7, height=4)
 ```
 
 ```{r}
-propLieGiven %>%
+p5 <- propLieGiven %>%
   filter(expt == "expt5") %>%
   ggplot(aes(x=reportedDrawn, y=prop, fill=lie)) +
   geom_bar(stat="identity") +
-  ggtitle("Expt 5 k* | k") +
-  scale_fill_manual(values=lieColors) +
-  coord_flip() +
-  facet_grid(probabilityRed ~ drawnRed)
+  ggtitle("Sender Gets Points for Blue") +
+  scale_x_continuous("Reported Value", breaks=seq(0,10,2)) +
+  scale_y_continuous("Proportion of Reports Conditioned on True Value", breaks=seq(0,1,0.5), labels=c("0","0.5","1")) +
+  scale_fill_manual("",values=lieColors) +
+  coord_flip(clip="off") +
+  facet_grid(probabilityRed ~ drawnRed) +
+  theme_bw() +
+  theme(axis.text = element_text(size=8)) +
+  geom_text(data=data.frame(probabilityRed="20% red", drawnRed=0, lie=NA), x=13, y=-1, size=2.5, hjust=0, label="True\nSample:")
+g5 <- ggplot_gtable(ggplot_build(p5))
+stripr <- which(grepl('strip-r', g5$layout$name))
+k <- 1
+for (i in stripr) {
+  j <- which(grepl('rect', g5$grobs[[i]]$grobs[[1]]$childrenOrder))
+  g5$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- my_red[k]
+  k <- k+1
+}
+ggsave("img/lieSpike/raw_modelLieSpike_expt5.png", g5, width=7, height=4)
 ```
 
 # Binomial distribution of k\* for each condition from MLE parameters
@@ -2093,7 +2858,7 @@ lieMLE.pred %>%
   mutate(lie = ifelse(k != kstar, "lie", "truth")) %>%
   ggplot(aes(x=kstar, y=p.kstar.k, fill=lie)) +
   geom_bar(stat="identity") +
-  ggtitle("Expt 4 k* | k") +
+  ggtitle("Fit Expt 4 k* | k") +
   scale_fill_manual(values=lieColors) +
   coord_flip() +
   facet_grid(p ~ k)
@@ -2106,7 +2871,7 @@ lieMLE.pred %>%
   mutate(lie = ifelse(k != kstar, "lie", "truth")) %>%
   ggplot(aes(x=kstar, y=p.kstar.k, fill=lie)) +
   geom_bar(stat="identity") +
-  ggtitle("Expt 5 k* | k") +
+  ggtitle("Fit Expt 5 k* | k") +
   scale_fill_manual(values=lieColors) +
   coord_flip() +
   facet_grid(p ~ k)
@@ -2117,6 +2882,80 @@ ggsave("img/fit_expt_modelLieSpike_expt5.png")
 ggplot(lieMLE.pred, aes(x=kstar, y=binom.kstar, colour=p)) +
   geom_line() +
   facet_grid(expt~.)
+```
+
+```{r}
+bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(probabilityRed = factor(paste0((probabilityRed*100), "% red")),
+         expt = ifelse(expt=="expt4", "Sender gets points for red", "Sender gets points for blue"),
+         expt = fct_relevel(expt, c("Sender gets points for red", "Sender gets points for blue"))) %>%
+  select(subjID, probabilityRed, expt, drawnRed, reportedDrawn) %>%
+  gather("type","value",4:5) %>%
+  mutate(type = ifelse(type=="drawnRed", "true", "reported"),
+         type = fct_relevel(type, c("true","reported"))) %>%
+  ggplot(aes(x=value, fill=type)) +
+  geom_bar(position="identity", alpha=0.3) +
+  geom_density(aes(y=..count..), adjust=2, alpha=0.3) +
+  scale_x_continuous("# of red marbles",breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("Counts", expand=c(0,0,0,40)) +
+  scale_fill_manual("", values=c("steelblue1","green4")) +
+  facet_grid(expt ~ probabilityRed) +
+  theme_bw()
+```
+
+Delta from the truth
+
+```{r}
+humanDelta <- bs.final %>%
+  filter(roleCurrent == "bullshitter") %>%
+  mutate(probabilityRed = factor(paste0((probabilityRed*100), "% red")),
+         expt = ifelse(expt=="expt4", "Sender gets points for red", "Sender gets points for blue"),
+         expt = fct_relevel(expt, c("Sender gets points for red", "Sender gets points for blue")),
+         delta = reportedDrawn - drawnRed) %>%
+  ggplot(aes(x=delta)) +
+  geom_bar(colour="black") +
+  ggtitle("Human Results") +
+  scale_x_continuous("Δk = Reported - True") +
+  scale_y_continuous("Count") +
+  facet_grid(expt ~ probabilityRed) +
+  theme_bw()
+
+# recursiveToMDelta <- recursiveToM_sender %>%
+#   ungroup() %>%
+#   mutate(probK = dbinom(k,10,p),
+#          p = factor(paste0((p*100), "% red")),
+#          expt = ifelse(expt=="expt4", "Sender gets points for red", "Sender gets points for blue"),
+#          expt = fct_relevel(expt, c("Sender gets points for red", "Sender gets points for blue")),
+#          delta = ksay - k,
+#          weightedVal = probK * meanVal) %>%
+#   group_by(p, expt, delta) %>%
+#   summarise(sum = sum(weightedVal)) %>%
+#   ggplot(aes(x=delta,y=sum)) +
+#   geom_bar(stat="identity", colour="black") +
+#   ggtitle("Recursive ToM") +
+#   scale_x_continuous("Δ (reported k* - true k)") +
+#   scale_y_continuous("Predicted Density", limits=c(0,1)) +
+#   facet_grid(expt ~ p) +
+#   theme_bw()
+# 
+# recursiveToMAversionDelta <- recursiveToM.aversion_sender %>%
+#   ungroup() %>%
+#   mutate(probK = dbinom(k,10,p),
+#          p = factor(paste0((p*100), "% red")),
+#          expt = ifelse(expt=="expt4", "Sender gets points for red", "Sender gets points for blue"),
+#          expt = fct_relevel(expt, c("Sender gets points for red", "Sender gets points for blue")),
+#          delta = ksay - k,
+#          weightedVal = probK * meanVal) %>%
+#   group_by(p, expt, delta) %>%
+#   summarise(sum = sum(weightedVal)) %>%
+#   ggplot(aes(x=delta,y=sum)) +
+#   geom_bar(stat="identity", colour="black") +
+#   ggtitle("Recursive ToM + Aversion") +
+#   scale_x_continuous("Δ (reported k* - true k)") +
+#   scale_y_continuous("Predicted Density", limits=c(0,1)) +
+#   facet_grid(expt ~ p) +
+#   theme_bw()
 ```
 
 ```{r}
@@ -2135,6 +2974,11 @@ lieMLE.pred %>%
 MLEparams <- lieMLE.pred %>%
   group_by(p, expt) %>%
   select(mu, mu.se, alph, alph.se) %>%
+  mutate(meanAlph = 10*logitToProb(alph),
+         meanAlph.lower = 10*logitToProb(alph - alph.se),
+         meanAlph.upper = 10*logitToProb(alph + alph.se),
+         meanAlph.CIlower = 10*logitToProb(alph - 1.96*alph.se),
+         meanAlph.CIupper = 10*logitToProb(alph + 1.96*alph.se)) %>%
   unique()
 
 MLEparams
@@ -2165,11 +3009,11 @@ twosampztest <- function(mu1, sd1, mu2, sd2){
 
 
 
-meancomb <- function(mus, sds){
-  sum(mus/sds^2)/sum(1/sds^2)
-}
-
-meancomb(matr_alph.mean[,'red'], matr_alph.se[,'red'])
+# meancomb <- function(mus, sds){
+#   sum(mus/sds^2)/sum(1/sds^2)
+# }
+# 
+# meancomb(matr_alph.mean[,'red'], matr_alph.se[,'red'])
 
 sumsd <- function(sds){
   sqrt(sum(sds^2)/3^2)
@@ -2710,7 +3554,7 @@ lieMLE.pred_random <- lieMLE.pred_random %>%
 
 lieMLE.pred_all <- bind_rows(lieMLE.pred, lieMLE.pred_recurse, lieMLE.pred_random) %>%
   mutate(p = paste("p =", p),
-         expt=factor(ifelse(expt=="expt4", "Red", "Blue"), levels=c("Red", "Blue")),
+         expt=factor(ifelse(expt=="expt4", "Red Payoff", "Blue Payoff"), levels=c("Red Payoff", "Blue Payoff")),
          model=factor(model, levels=c("Random Opponent", "Recursive", "Human")))
 
 
@@ -2719,8 +3563,15 @@ lieMLE.pred_human <- lieMLE.pred_all %>%
   select(p, expt, alph, alph.se, model) %>%
   unique() %>%
   mutate(meanAlph = 10*logitToProb(alph),
-         lowerMeanAlph = 10*logitToProb(alph-2*alph.se),
-         upperMeanAlph = 10*logitToProb(alph+2*alph.se))
+         meanAlph.se = 10*logitToProb(alph.se),
+         lowerMeanAlph = 10*logitToProb(alph-1.96*alph.se),
+         upperMeanAlph = 10*logitToProb(alph+1.96*alph.se))
+
+
+lieMLE.pred_human
+
+
+
 
 lieMLE.pred_all %>%
   select(p, expt, alph, alph.se, model) %>%
@@ -2747,9 +3598,9 @@ liePred_random <- lieMLE.pred_all %>%
   mutate(meanAlph = 10*logitToProb(alph)) %>%
   ggplot(aes(x=expt, y=meanAlph, fill=p)) +
   geom_bar(stat="identity", position="dodge") +
-  ggtitle("Random Opponent") +
-  scale_x_discrete("Utility") +
-  scale_y_continuous("Average Lie", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  ggtitle("a) Random Opponent Model") +
+  scale_x_discrete("") +
+  scale_y_continuous("Sender Mean Lie Reported", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   scale_fill_manual(values = condColors.diff) +
   guides(fill=guide_legend(title="", override.aes=list(size=2.5))) +
   theme_minimal() +
@@ -2768,7 +3619,7 @@ liePred_recurse <- lieMLE.pred_all %>%
   mutate(meanAlph = 10*logitToProb(alph)) %>%
   ggplot(aes(x=expt, y=meanAlph, fill=p)) +
   geom_bar(stat="identity", position="dodge") +
-  ggtitle("Recursive") +
+  ggtitle("b) Recursive ToM Model") +
   scale_x_discrete("") +
   scale_y_continuous("", limits=c(0,10), labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   scale_fill_manual(values = condColors.diff) +
@@ -2790,7 +3641,7 @@ liePred_human <- lieMLE.pred_all %>%
   ggplot(aes(x=expt, y=meanAlph, fill=p)) +
   geom_bar(stat="identity", position="dodge") +
   geom_errorbar(data=lieMLE.pred_human, aes(x=expt, fill=p, min=lowerMeanAlph, max=upperMeanAlph), width=.3, position=position_dodge(.9)) +
-  ggtitle("Human Results") +
+  ggtitle("c) Human Results") +
   scale_x_discrete("") +
   scale_y_continuous("", limits=c(0,10), labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
   scale_fill_manual(values = condColors.diff) +
@@ -2813,8 +3664,8 @@ liePred <- plot_grid(liePred_random,
                       nrow=1,
                       rel_widths=c(10.52, 10, 10))
 
-# liarPredLabel <- ggdraw() +
-#   draw_label("Liar", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270)
+liarLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270)
 liepredrow <- plot_grid(liePred, liarLabel, nrow=1, rel_widths=c(96, 4))
 
 withLegend_lie <- ggdraw() +
@@ -2824,6 +3675,159 @@ withLegend_lie
 
 ggsave("img/liePredictions.pdf", withLegend_lie, units="cm", height=5.5, width=17.8)
 ```
+
+```{r}
+# VARY RED
+sender_points_label = c(
+  "Red Payoff" = "Sender gets\npoints for red",
+  "Blue Payoff" = "Sender gets\npoints for blue"
+)
+
+liePred_random <- lieMLE.pred_all %>%
+  filter(model == "Random Opponent") %>%
+  select(p, expt, alph, alph.se) %>%
+  unique() %>%
+  mutate(meanAlph = 10*logitToProb(alph)) %>%
+  ggplot(aes(x=expt, y=meanAlph, fill=p)) +
+  geom_bar(stat="identity", position="dodge", colour=outlinecolor, size=strokesize) +
+  ggtitle("a) Random Opponent Model") +
+  scale_x_discrete("", labels=sender_points_label) +
+  scale_y_continuous("Sender Mean Lie (# Red Reported)", limits=c(0,10), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_fill_manual(values=my_red, labels=p_label) +
+  #scale_fill_brewer(palette="Reds") +
+  #guides(fill=guide_legend(title="", override.aes=list(size=2.5))) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+liePred_recurse <- lieMLE.pred_all %>%
+  filter(model == "Recursive") %>%
+  select(p, expt, alph, alph.se) %>%
+  unique() %>%
+  mutate(meanAlph = 10*logitToProb(alph)) %>%
+  ggplot(aes(x=expt, y=meanAlph, fill=p)) +
+  geom_bar(stat="identity", position="dodge", colour=outlinecolor, size=strokesize) +
+  ggtitle("b) Recursive ToM Model") +
+  scale_x_discrete("", labels=sender_points_label) +
+  scale_y_continuous("", limits=c(0,10), labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_fill_manual(values = my_red, labels=p_label) +
+  #guides(fill=guide_legend(title="", override.aes=list(size=2.5))) +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+liePred_human <- lieMLE.pred_all %>%
+  filter(model == "Human") %>%
+  select(p, expt, alph, alph.se) %>%
+  unique() %>%
+  mutate(meanAlph = 10*logitToProb(alph)) %>%
+  ggplot(aes(x=expt, y=meanAlph, fill=p)) +
+  geom_bar(stat="identity", position="dodge", colour=outlinecolor, size=strokesize) +
+  geom_errorbar(data=lieMLE.pred_human, aes(x=expt, fill=p, min=lowerMeanAlph, max=upperMeanAlph), width=.3, position=position_dodge(.9)) +
+  ggtitle("c) Human Results") +
+  scale_x_discrete("", labels=sender_points_label) +
+  scale_y_continuous("", limits=c(0,10), labels=rep("",6), breaks=c(0,2,4,6,8,10), expand=c(0,0)) +
+  scale_fill_manual(values = my_red, labels=p_label) +
+  guides(fill=guide_legend(title="Base Rate", override.aes=list(size=0.25))) +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+legend_lie <- get_legend(liePred_human)
+
+liePred <- plot_grid(liePred_random,
+                      liePred_recurse,
+                      liePred_human + theme(legend.position="none"), 
+                      nrow=1,
+                      rel_widths=c(10.52, 10, 10))
+
+liarLabel <- ggdraw() +
+  draw_label("", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270)
+liepredrow <- plot_grid(liePred, liarLabel, nrow=1, rel_widths=c(96, 4))
+
+withLegend_lie <- ggdraw() +
+  draw_plot(liepredrow) +
+  draw_plot(legend_lie, x=0.415, y=0.27)
+withLegend_lie
+
+ggsave("img/liePredictions_reds4.pdf", withLegend_lie, units="cm", height=5.5, width=17.8)
+```
+
+```{r}
+
+liePred_indiv <- indiv.sender %>%
+  select(subj, p, expt, alph, alph.se) %>%
+  unique() %>%
+  mutate(p_expt = paste0(p, "_", expt),
+         p = as.factor(paste("p =", p)),
+         meanAlph = 10*logitToProb(alph),
+         expt = factor(ifelse(expt == "expt4", "Red Payoff", "Blue Payoff"), levels=c("Red Payoff", "Blue Payoff"))) %>%
+  ggplot(aes(x=expt, y=meanAlph, fill=p)) +
+  geom_dotplot(binaxis = "y", binwidth=0.15, stackdir = "center", alpha=0.4, position="dodge") +
+  geom_pointrange(aes(fill=p),
+                  stat="summary", 
+                  fun.data = "mean_se", 
+                  position =  position_dodge(width = 0.9), 
+                  shape=21,
+                  size=0.5) +
+  ggtitle("c) Human Results") +
+  scale_x_discrete("", labels=sender_points_label) +
+  scale_y_continuous("", limits=c(0,10), labels=rep("",6), breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_manual("Base Rate", values=my_red, labels=base_rate_label) +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.key.size = unit(0.36, 'cm'),
+        plot.margin = marginDim,
+        plot.title = element_text(size=plotTitleSize, hjust = 0.5, face = "bold"),
+        axis.title = element_text(size=axisTitleSize),
+        axis.text = element_text(size=axisTextSize),
+        axis.text.x = element_text(margin=marginAxisX),
+        axis.line = element_line(size=axisLineSize, colour=axisLineColour))
+
+liePred.indiv <- plot_grid(liePred_random,
+                      liePred_recurse,
+                      liePred_indiv + theme(legend.position="none"), 
+                      nrow=1,
+                      rel_widths=c(10.52, 10, 10))
+
+
+liepredrow <- plot_grid(liePred.indiv, liarLabel, nrow=1, rel_widths=c(96, 4))
+
+withLegend_lie <- ggdraw() +
+  draw_plot(liepredrow) +
+  draw_plot(legend_lie, x=0.415, y=0.38)
+withLegend_lie
+
+ggsave("img/liePredictions_indiv.pdf", withLegend_lie, units="cm", height=9.5, width=17.8)
+```
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
@@ -2899,6 +3903,26 @@ ggsave("img/detectPredictions_expt5.png",
        units="cm", height=4.7, width=17.8)
 ```
 
+
+
+```{r}
+# Without smoothing, compute average lie
+humanLie %>%
+  filter(drawnRed != reportedDrawn) %>%
+  nrow() / nrow(humanLie)
+## 33.8% overall lie rate
+
+humanLie %>%
+  filter(drawnRed != reportedDrawn) %>%
+  mutate(p = as.factor(probabilityRed)) %>%
+  group_by(expt, p) %>%
+  summarise(empiricalMeanLie = mean(reportedDrawn)) %>%
+  left_join(select(MLEparams, p, expt, meanAlph), by=c("expt","p")) %>%
+  mutate(inferredMeanLie = meanAlph) %>%
+  select(-meanAlph)
+
+
+```
 
 
 
