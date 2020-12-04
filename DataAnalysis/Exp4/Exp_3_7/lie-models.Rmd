@@ -48,6 +48,10 @@ countsDetect <- bind_rows(template2,countsDetect) %>%
 logitToProb <- function(logit){
   exp(logit) / (1+exp(logit))
 }
+
+probToLogit <- function(prob){
+  log(prob / (1 - prob))
+}
 ```
 
 # Models of lying
@@ -65,37 +69,82 @@ geometric?
 poisson?  (probably poisson is best)
 
 ```{r}
-allLies.poisson <- function(k, kstar, util, theta){
-  pmax(log(dpois((kstar-k)*util, theta)),-9999)
+allLies.poisson <- function(k, kstar, util, theta, weight){
+  weight = logitToProb(pmin(10, pmax(-10, weight)))
+  theta = exp(theta)
+  log(weight*dpois((kstar-k)*util, theta)/ppois(ifelse(util==1, 10-k, k), theta)+(1-weight)*(1/11))
 }
 
-allLies.LL <- function(theta){
+allLies.LL <- function(theta, weight){
   k = humanLie$drawnRed
   kstar = humanLie$reportedDrawn
   expt = humanLie$expt
   util = ifelse(expt=="expt4", 1, -1)
   
-  pred = allLies.poisson(k, kstar, util, theta)
+  pred = allLies.poisson(k, kstar, util, theta, weight)
   # likelihood of observed kstar for that k, given parameters
   neg.log.lik = -1*sum(pred)
   neg.log.lik
 }
 
 allLies.fit <- summary(mle(allLies.LL,
-           start=list(theta=rnorm(1, 10, 1)),
+           start=list(theta=rnorm(1, 0, 1),
+                      weight=rnorm(1, 0, 1)),
            method = "BFGS"))
-allLies.fit@m2logL
+allLies.fit
 
 humanLie.predAllLies <- data.frame(k=rep(rep(0:10, each=11),2), 
                                     kstar=rep(0:10, 11*2),
-                                    util=rep(c(1,-1),each=11*11))
-humanLie.predAllLies$predicted <- logitToProb(allLies.poisson(rep(rep(0:10, each=11),2), rep(0:10, 11*2), rep(c(1,-1),each=11*11), allLies.fit@coef['theta','Estimate']))
+                                    util=rep(c(1,-1),each=11*11)) %>%
+  mutate(predicted = exp(allLies.poisson(k, kstar, util, allLies.fit@coef['theta','Estimate'], allLies.fit@coef['weight','Estimate'])))
 
 humanLie.predAllLies %>%
+  group_by(util,k) %>%
+  summarise(sum=sum(predicted))
+
+humanLie.predAllLies %>%
+  mutate(util = ifelse(util == 1, "sender gets points for red", "sender gets points for blue"),
+         util = fct_relevel(util,"sender gets points for red", "sender gets points for blue")) %>%
   ggplot(aes(x=k, y=kstar, fill=predicted)) +
   geom_tile() +
-  facet_wrap(~util)
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy") +
+  facet_wrap(~util) +
+  theme_bw()
+ggsave("img/simpleModels/allLies.png", width=7, height=3.45)
 
+
+
+
+allLies.pred.full <- humanLie.predAllLies %>%
+  mutate(util = ifelse(util == 1, "sender gets points for red", "sender gets points for blue"),
+         util = fct_relevel(util,"sender gets points for red", "sender gets points for blue")) %>%
+  slice(rep(1:n(), 3)) %>%
+  mutate(p = rep(c(0.2, 0.5, 0.8), each=242),
+         p = as.factor(paste("p =",p)))
+
+allLies.pred.red.fig <- allLies.pred.full %>%
+  filter(util == "sender gets points for red") %>%
+  ggplot(aes(x=k, y=kstar, fill=predicted)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nEverybody Lies", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
+
+allLies.pred.blue.fig <- allLies.pred.full %>%
+  filter(util == "sender gets points for blue") %>%
+  ggplot(aes(x=k, y=kstar, fill=predicted)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nEverybody Lies", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
 ```
 
 ### some fraction of people lie by some amount
@@ -106,22 +155,20 @@ k\neq k^* & (1-p) \cdot phi(k^* - k \mid \theta, SIGN(u))
 \end{cases}$$
 
 ```{r}
-logitToProb <- function(logit){
-  exp(logit) / (1+exp(logit))
+someLies.poisson <- function(k, kstar, p, util, theta, weight){
+  p = logitToProb(pmin(10, pmax(-10, p)))
+  weight = logitToProb(pmin(10, pmax(-10, weight)))
+  theta = exp(theta)
+  log((k==kstar)*p + (1-p)*(weight*dpois((kstar-k)*util, theta)/ppois(ifelse(util==1, 10-k, k), theta) + (1-weight)/11))
 }
 
-someLies.poisson <- function(k, kstar, p, util, theta){
-  p = logitToProb(pmin(9999, pmax(-9999, p)))
-  pmax(log(ifelse(k==kstar, p, (1-p)*dpois((kstar-k)*util, theta))),-9999)
-}
-
-someLies.LL <- function(p, theta){
+someLies.LL <- function(p, theta, weight){
   k = humanLie$drawnRed
   kstar = humanLie$reportedDrawn
   expt = humanLie$expt
   util = ifelse(expt=="expt4", 1, -1)
   
-  pred = someLies.poisson(k, kstar, p, util, theta)
+  pred = someLies.poisson(k, kstar, p, util, theta, weight)
   # likelihood of observed kstar for that k, given parameters
   neg.log.lik = -1*sum(pred)
   neg.log.lik
@@ -129,22 +176,59 @@ someLies.LL <- function(p, theta){
 
 someLies.fit <- summary(mle(someLies.LL,
            start=list(p=rnorm(1,0,1),
-                      theta=rnorm(1, 10, 1)),
+                      theta=rnorm(1, 0, 1),
+                      weight=rnorm(1, 0, 1)),
            method = "BFGS"))
-someLies.fit@coef['p','Estimate']
-someLies.fit@m2logL
+someLies.fit
 
 humanLie.predSomeLies <- data.frame(k=rep(rep(0:10, each=11),2), 
                                     kstar=rep(0:10, 11*2),
-                                    util=rep(c(1,-1),each=11*11))
-humanLie.predSomeLies$predicted <- logitToProb(someLies.poisson(rep(rep(0:10, each=11),2), rep(0:10, 11*2), someLies.fit@coef['p','Estimate'], rep(c(1,-1),each=11*11), someLies.fit@coef['theta','Estimate']))
+                                    util=rep(c(1,-1),each=11*11)) %>%
+  mutate(predicted = exp(someLies.poisson(k, kstar, someLies.fit@coef['p','Estimate'], util, someLies.fit@coef['theta','Estimate'], someLies.fit@coef['weight','Estimate'])))
 
 humanLie.predSomeLies %>%
+  mutate(util = ifelse(util == 1, "sender gets points for red", "sender gets points for blue"),
+         util = fct_relevel(util,"sender gets points for red", "sender gets points for blue")) %>%
   ggplot(aes(x=k, y=kstar, fill=predicted)) +
   geom_tile() +
-  facet_wrap(~util)
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy") +
+  facet_wrap(~util) +
+  theme_bw()
+ggsave("img/simpleModels/someLies.png", width=7, height=3.45)
 
 
+
+
+someLies.pred.full <- humanLie.predSomeLies %>%
+  mutate(util = ifelse(util == 1, "sender gets points for red", "sender gets points for blue"),
+         util = fct_relevel(util,"sender gets points for red", "sender gets points for blue")) %>%
+  slice(rep(1:n(), 3)) %>%
+  mutate(p = rep(c(0.2, 0.5, 0.8), each=242),
+         p = as.factor(paste("p =",p)))
+
+someLies.pred.red.fig <- someLies.pred.full %>%
+  filter(util == "sender gets points for red") %>%
+  ggplot(aes(x=k, y=kstar, fill=predicted)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nSome People Lie", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
+
+someLies.pred.blue.fig <- someLies.pred.full %>%
+  filter(util == "sender gets points for blue") %>%
+  ggplot(aes(x=k, y=kstar, fill=predicted)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nSome People Lie", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
 ```
 
 ### random opponent
@@ -153,104 +237,105 @@ sender based on baseline detector?
 are there any parameters here to optimize?
 
 ```{r}
-noToM_liar <- data.frame(role=factor(),
-                      p=numeric(), 
-                      expt=factor(),
-                      mor=numeric(),
-                      k=numeric(),
-                      ksay=numeric(),
-                      val=numeric(),
-                      n=numeric())
-
-for(i in c(0.2, 0.5, 0.8)){
-  for(j in c(4,5)){
-    Expt = j
-    moral = 0
-    sim.D <- p.L_ksay.k.r(i, rep(0.5,11))
-    
-    noToM_liar <- bind_rows(noToM_liar,
-                            data.frame(role="Liar", p=i, expt=paste0("expt",j),
-                                       mor=0,
-                                       k = rep(0:10, each=11),
-                                       ksay = rep(0:10, 11),
-                                       val=as.vector(sim.D),
-                                       n=1))
-  }
-}
-
-write_csv(noToM_liar, "lie-models/noToM_sender_prior0.5.csv")
-
-noToM_liar %>%
-  ggplot(aes(x=k, y=ksay, fill=val)) +
-  geom_tile(stat="identity") +
-  facet_grid(expt ~ p)
+# noToM_liar <- data.frame(role=factor(),
+#                       p=numeric(), 
+#                       expt=factor(),
+#                       mor=numeric(),
+#                       k=numeric(),
+#                       ksay=numeric(),
+#                       val=numeric(),
+#                       n=numeric())
+# 
+# for(m in -5:25){
+#   moral = m
+#   for(i in c(0.2, 0.5, 0.8)){
+#     for(j in c(4,5)){
+#       Expt = j
+#       sim.D <- p.L_ksay.k.r(i, TRUE, iterate.D(0,i,rep(0.5,11)))
+#       
+#       noToM_liar <- bind_rows(noToM_liar,
+#                               data.frame(role="Liar", p=i, expt=paste0("expt",j),
+#                                          mor=m,
+#                                          k = rep(0:10, each=11),
+#                                          ksay = rep(0:10, 11),
+#                                          val=as.vector(sim.D),
+#                                          n=1))
+#     }
+#   }
+# }
+# 
+# write_csv(noToM_liar, "lie-models/noToM_sender_all.csv")
+noToM_liar <- read_csv("lie-models/noToM_sender_all.csv")
 
 full.counts <- countsLie %>%
   group_by(expt, drawnRed, reportedDrawn) %>%
   summarise(n = sum(n))
 
-product <- 0
-for(e in c("expt4","expt5")){
-  for(t in 0:10){
-    this.matr <- matrix(filter(noToM_liar,expt==e, p==0.5)$val, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
-    this.counts <- filter(full.counts, expt==e)
-    loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
-    #print(paste(e, ",", "true =", t, ":", loglik))
-    product <- product + loglik
-  }
-}
-
--product
-```
-
-### random opponent + aversion penalty --- no difference of aversion penalty
-
-```{r}
-noToM_liar.m <- data.frame(role=factor(),
-                      p=numeric(), 
-                      expt=factor(),
-                      mor=numeric(),
-                      k=numeric(),
-                      ksay=numeric(),
-                      val=numeric(),
-                      n=numeric())
-
-
-for(m in -5:25){
-  moral = m
-  for(i in c(0.2, 0.5, 0.8)){
-    for(j in c(4,5)){
-      Expt = j
-      sim.D <- p.L_ksay.k.r(i, rep(0.5,11))
-      
-      noToM_liar.m <- bind_rows(noToM_liar.m,
-                              data.frame(role="Liar", p=i, expt=paste0("expt",j),
-                                         mor=m,
-                                         k = rep(0:10, each=11),
-                                         ksay = rep(0:10, 11),
-                                         val=as.vector(sim.D),
-                                         n=1))
-    }
-  }
-}
-
 logliks_randomOpp_m.l <- data.frame(mor = numeric(), loglik = numeric())
-for(m in unique(noToM_liar.m$mor)){
+for(m in unique(noToM_liar$mor)){
   tempProd <- 0
-  noToM_liar.mX <- filter(noToM_liar.m, mor==m)
+  noToM_liar.mX <- filter(noToM_liar, mor==m)
   for(e in c("expt4","expt5")){
     for(t in 0:10){
       this.matr <- matrix(filter(noToM_liar.mX,expt==e, p==0.5)$val, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
-      this.counts <- filter(full.counts, expt==e)
-      loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
+      this.counts <- filter(full.counts, expt==e, drawnRed==t)
+      n <- this.counts$n
+      total <- sum(this.counts$n)
+      loglik <- sum(log(this.matr[,(t+1)])*n) #equiv to log of product
+      #loglik <- dmultinom(n, total, this.matr[,(t+1)], log=T)
       #print(paste(e, ",", "true =", t, ":", loglik))
       tempProd <- tempProd + loglik
     }
   }
   logliks_randomOpp_m.l <- bind_rows(logliks_randomOpp_m.l, data.frame(mor=m, loglik=tempProd))
 }
-logliks_randomOpp_m.l
 
+best.randOpp <- logliks_randomOpp_m.l %>%
+  filter(loglik == max(loglik))
+
+noToM_liar %>%
+  filter(mor == best.randOpp$mor) %>%
+  mutate(expt = ifelse(expt == "expt4", "sender gets points for red", "sender gets points for blue"),
+         expt = fct_relevel(expt,"sender gets points for red", "sender gets points for blue")) %>%
+  ggplot(aes(x=k, y=ksay, fill=val)) +
+  geom_tile(stat="identity") +
+  ggtitle(paste0("Random Opponent + Aversion (η=",best.randOpp$mor,")")) +
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient("predicted", low="white",high="navy") +
+  facet_grid(expt ~ p)
+ggsave("img/simpleModels/noToM_sender.png", width=7, height=4.6)
+
+
+
+
+noToM_liar.pred.full <- noToM_liar %>%
+  filter(mor == best.randOpp$mor) %>%
+  mutate(expt = ifelse(expt == "expt4", "sender gets points for red", "sender gets points for blue"),
+         expt = fct_relevel(expt,"sender gets points for red", "sender gets points for blue"),
+         p = as.factor(paste("p =",p)))
+
+noToM_liar.pred.red.fig <- noToM_liar.pred.full %>%
+  filter(expt == "sender gets points for red") %>%
+  ggplot(aes(x=k, y=ksay, fill=val)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*\n\nNo ToM", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
+
+noToM_liar.pred.blue.fig <- noToM_liar.pred.full %>%
+  filter(expt == "sender gets points for blue") %>%
+  ggplot(aes(x=k, y=ksay, fill=val)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*\n\nNo ToM", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
 ```
 
 ### iterated recursive liar behavior
@@ -271,7 +356,7 @@ logliks_randomOpp_m.l
 #     for(k in c(4,5)){
 #       Expt = k
 #       for(d in 0:40){
-#         sim.L <- p.L_ksay.k.r(i, iterate.D(d, i, rep(0.5,11)))
+#         sim.L <- p.L_ksay.k.r(i, lastlvl=TRUE, iterate.D(d, i, rep(0.5,11)))
 # 
 #         iteratedToM_liar <- bind_rows(iteratedToM_liar,
 #                                 data.frame(role="Liar", p=i, expt=paste0("expt",k),
@@ -285,66 +370,15 @@ logliks_randomOpp_m.l
 #   }
 # }
 # 
-# write.csv(iteratedToM_liar, "lie-models/recursiveToM_sender_prior0.5.csv")
-iteratedToM_liar <- read.csv("lie-models/recursiveToM_sender_prior0.5.csv")
-
+# write.csv(iteratedToM_liar, "lie-models/recursiveToM_sender_all.csv")
+iteratedToM_liar <- read.csv("lie-models/recursiveToM_sender_all.csv")
 
 iteratedToM_liar_weighted <- iteratedToM_liar %>%
-  mutate(depthGeomWeight = dgeom(depth, 0.1),
-         weightedVal = val*depthGeomWeight) %>%
   group_by(p, expt, mor, k, ksay) %>%
-  summarise(meanVal = sum(weightedVal))
+  mutate(w = dgeom(depth, 0.1) / sum(dgeom(0:40, 0.1))) %>% #normalize
+  summarise(wval = sum(w*val)) %>%
+  ungroup()
   
-iteratedToM_liar_m0 <- filter(iteratedToM_liar_weighted, mor==0)
-iteratedProduct <- 0
-for(e in c("expt4","expt5")){
-  for(prob in c(0.2, 0.5, 0.8)){
-    for(t in 0:10){
-      this.matr <- matrix(filter(iteratedToM_liar_m0,expt==e, p==prob)$meanVal, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
-      this.counts <- filter(countsLie, expt==e, probabilityRed==prob)
-      loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
-      #print(paste(e, ",", "true =", t, ":", loglik))
-      iteratedProduct <- iteratedProduct + loglik
-    }
-  }
-}
-
--iteratedProduct
-```
-
-### find best fitting lying aversion, fit to condition
-```{r}
-logliks_m <- data.frame(mor = numeric(), expt=factor(), p=numeric(), loglik = numeric())
-for(m in unique(iteratedToM_liar$mor)){
-  iteratedToM_liar_mX <- filter(iteratedToM_liar_weighted, mor==m)
-  for(e in c("expt4","expt5")){
-    for(prob in c(0.2, 0.5, 0.8)){
-      tempProd <- 0
-      for(t in 0:10){
-        this.matr <- matrix(filter(iteratedToM_liar_mX,expt==e, p==prob)$meanVal, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
-        this.counts <- filter(countsLie, expt==e, probabilityRed==prob)
-        loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
-        #print(paste(e, ",", "true =", t, ":", loglik))
-        tempProd <- tempProd + loglik
-      }
-      logliks_m <- bind_rows(logliks_m, data.frame(mor=m, expt=e, p=prob, loglik=tempProd))
-    }
-  }
-}
-
-logliks_m %>%
-  ggplot(aes(x=mor, y=-loglik, colour=as.factor(p), linetype=expt)) +
-  geom_point(alpha=0.8) +
-  geom_line() +
-  theme_minimal()
-
-logliks_m %>%
-  group_by(expt, p) %>%
-  filter(-loglik == min(-loglik))
-```
-
-### find best fitting lying aversion, all conditions
-```{r}
 logliks_m <- data.frame(mor = numeric(), loglik = numeric())
 for(m in unique(iteratedToM_liar$mor)){
   iteratedToM_liar_mX <- filter(iteratedToM_liar_weighted, mor==m)
@@ -352,9 +386,13 @@ for(m in unique(iteratedToM_liar$mor)){
   for(e in c("expt4","expt5")){
     for(prob in c(0.2, 0.5, 0.8)){
       for(t in 0:10){
-        this.matr <- matrix(filter(iteratedToM_liar_mX,expt==e, p==prob)$meanVal, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
-        this.counts <- filter(countsLie, expt==e, probabilityRed==prob)
-        loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
+        this.matr <- matrix(filter(iteratedToM_liar_mX,expt==e, p==prob)$wval, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
+        this.counts <- filter(countsLie, expt==e, probabilityRed==prob, drawnRed==t)
+        n <- this.counts$n
+        total <- sum(this.counts$n)
+        loglik <- sum(log(this.matr[,(t+1)])*n) #equiv to log of product
+        #log((factorial(total)/prod(factorial(n))) * prod(this.matr[,(t+1)]^n)) #delete later
+        #loglik <- dmultinom(n, total, this.matr[,(t+1)], log=T)
         #print(paste(e, ",", "true =", t, ":", loglik))
         tempProd <- tempProd + loglik
       }
@@ -363,83 +401,211 @@ for(m in unique(iteratedToM_liar$mor)){
   logliks_m <- bind_rows(logliks_m, data.frame(mor=m, loglik=tempProd))
 }
 
-logliks_m
+best.recursiveToM <- logliks_m %>%
+  filter(loglik == max(loglik))
+
+iteratedToM_liar_weighted %>%
+  filter(mor == best.recursiveToM$mor) %>%
+  mutate(expt = ifelse(expt == "expt4", "sender gets points for red", "sender gets points for blue"),
+         expt = fct_relevel(expt,"sender gets points for red", "sender gets points for blue")) %>%
+  ggplot(aes(x=k, y=ksay, fill=wval)) +
+  geom_tile(stat="identity") +
+  ggtitle(paste0("Recursive ToM + Aversion (η=",best.recursiveToM$mor,")")) +
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient("predicted", low="white",high="navy") +
+  facet_grid(expt ~ p)
+ggsave("img/simpleModels/recursiveToM_sender.png", width=7, height=4.6)
+
+
+
+
+
+
+
+recursiveToM_liar.pred.full <- iteratedToM_liar_weighted %>%
+  filter(mor == best.recursiveToM$mor) %>%
+  mutate(expt = ifelse(expt == "expt4", "sender gets points for red", "sender gets points for blue"),
+         expt = fct_relevel(expt,"sender gets points for red", "sender gets points for blue"),
+         p = as.factor(paste("p =",p)))
+
+recursiveToM_liar.pred.red.fig <- recursiveToM_liar.pred.full %>%
+  filter(expt == "sender gets points for red") %>%
+  ggplot(aes(x=k, y=ksay, fill=wval)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nRecursive ToM", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
+
+recursiveToM_liar.pred.blue.fig <- recursiveToM_liar.pred.full %>%
+  filter(expt == "sender gets points for blue") %>%
+  ggplot(aes(x=k, y=ksay, fill=wval)) +
+  geom_tile() +
+  scale_x_continuous("", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nRecursive ToM", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~p) +
+  theme_bw()
+
 ```
 
+```{r}
+countsLie.full <- countsLie %>%
+  mutate(expt = ifelse(expt == "expt4", "sender gets points for red", "sender gets points for blue"),
+         expt = fct_relevel(expt,"sender gets points for red", "sender gets points for blue"),
+         probabilityRed = as.factor(paste("p =",probabilityRed))) %>%
+  group_by(expt, probabilityRed, drawnRed) %>%
+  mutate(condPropReport = n / sum(n))
+
+ggplot(countsLie.full, aes(x=drawnRed, y=reportedDrawn, fill=condPropReport)) +
+  geom_tile(stat="identity") +
+  ggtitle("Human Results") +
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("reported k*", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient("proportion", low="white",high="navy") +
+  facet_grid(expt ~ probabilityRed)
+ggsave("img/simpleModels/humanResults_sender.png", width=7, height=4.6)
+
+
+
+
+humanResults.pred.red.fig <- countsLie.full %>%
+  filter(expt == "sender gets points for red") %>%
+  ggplot(aes(x=drawnRed, y=reportedDrawn, fill=condPropReport)) +
+  geom_tile() +
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nHuman Results", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient(low="white",high="navy", limits=c(0,1)) +
+  guides(fill=FALSE) +
+  facet_wrap(~probabilityRed) +
+  theme_bw()
+
+humanResults.pred.blue.fig <- countsLie.full %>%
+  filter(expt == "sender gets points for blue") %>%
+  ggplot(aes(x=drawnRed, y=reportedDrawn, fill=condPropReport)) +
+  geom_tile() +
+  scale_x_continuous("true drawn k", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_y_continuous("\n\nHuman Results", breaks=seq(0,10,2), expand=c(0,0)) +
+  scale_fill_gradient("proportion\nk* given k", low="white",high="navy", limits=c(0,1)) +
+  #guides(fill=FALSE) +
+  facet_wrap(~probabilityRed) +
+  theme_bw()
+
+sender_legend <- get_legend(humanResults.pred.blue.fig)
+```
+
+
+```{r}
+liePred.red <- plot_grid(
+  allLies.pred.red.fig, 
+  someLies.pred.red.fig, 
+  noToM_liar.pred.red.fig, 
+  recursiveToM_liar.pred.red.fig, 
+  humanResults.pred.red.fig, 
+  nrow=5)
+liePred.red.legend <- ggdraw() +
+  draw_plot(
+    plot_grid(
+      liePred.red, 
+      ggdraw() + draw_label("", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270), 
+      nrow=1, rel_widths=c(90, 10))) +
+  draw_plot(sender_legend, x=0.45, y=0.025)
+ggsave("img/simpleModels/allRed_sender.png", liePred.red.legend, width=7, height=10)
+
+
+liePred.blue <- plot_grid(
+  allLies.pred.blue.fig,
+  someLies.pred.blue.fig,
+  noToM_liar.pred.blue.fig,
+  recursiveToM_liar.pred.blue.fig,
+  humanResults.pred.blue.fig + theme(legend.position="none"), 
+  nrow=5)
+liePred.blue.legend <- ggdraw() +
+  draw_plot(
+    plot_grid(
+      liePred.blue, 
+      ggdraw() + draw_label("", fontface="bold", size=12, y=0.87, x=0.5, hjust=0, angle=270), 
+      nrow=1, rel_widths=c(90, 10))) +
+  draw_plot(sender_legend, x=0.45, y=0.025)
+ggsave("img/simpleModels/allBlue_sender.png", liePred.blue.legend, width=7, height=10)
+```
 
 
 
 ###fit MLE on depth
 
 ```{r}
-countsLie2 <- countsLie %>%
-  mutate(p = probabilityRed,
-         k = drawnRed,
-         ksay = reportedDrawn) %>%
-  select(expt, p, k, ksay, n) %>%
-  group_by(expt, p, k) %>%
-  mutate(sum = sum(n))
-
-iteratedToM_liar_mor0 <- filter(iteratedToM_liar, mor==0)
-
-depth.geometric <- function(d, val, depth){
-  d = logitToProb(pmin(9999, pmax(-9999, d)))
-  dgeom(depth, d)*val
-}
-
-newVal = iteratedToM_liar_mor0$val*dgeom(iteratedToM_liar_mor0$depth, 0.1)
-mean.predicted <- function(){
-  
-}
-aggregate(newVal, by=list(ksay=iteratedToM_liar_mor0$ksay, 
-                          k=iteratedToM_liar_mor0$k, 
-                          p=iteratedToM_liar_mor0$p, 
-                          expt=iteratedToM_liar_mor0$expt), 
-          FUN=sum)
-depth.geometric.loglik <- function(y, d, k, ksay){
-  
-  sum(
-    pmax(dmultinom(y, 1, logistic.detect(kstar, beta, offset), log=T), -9999)
-  )
-}
-
-depth.LL <- function(d){
-  expt = iteratedToM_liar_mor0$expt
-  p = iteratedToM_liar_mor0$p
-  depth = iteratedToM_liar_mor0$depth
-  k = iteratedToM_liar_mor0$k
-  ksay = iteratedToM_liar_mor0$ksay
-  val = iteratedToM_liar_mor0$val
-  actual = countsLie$n  
-  #d=probToLogit(0.1)
-  
-  weighted = aggregate(depth.geometric(d, val, depth), 
-                       by=list(ksay=ksay, 
-                               k=k, 
-                               p=p, 
-                               expt=expt), 
-                       FUN=sum)
-  countsLie3 <- countsLie2 %>%
-    left_join(weighted) %>%
-    group_by(expt, p, k) %>%
-    mutate(norm_x = x/sum(x))
-  
-  pred = 0
-  for(e in unique(countsLie3$expt)){
-    for(p in unique(countsLie3$p)){
-      for(k in unique(countsLie3$k)){
-        thisCount = countsLie3 %>%
-          filter(expt == e, p == p, k == k)
-        pred = pred + dmultinom(thisCount$n, thisCount$sum[1], thisCount$norm_x, log=T)
-      }
-    }
-  }
-  
-  #pred = depth.geometric(d, predicted, k, ksay)
-  # likelihood of observed kstar for that k, given parameters
-  neg.log.lik = -1*sum(pred)
-  neg.log.lik
-}
+# countsLie2 <- countsLie %>%
+#   mutate(p = probabilityRed,
+#          k = drawnRed,
+#          ksay = reportedDrawn) %>%
+#   select(expt, p, k, ksay, n) %>%
+#   group_by(expt, p, k) %>%
+#   mutate(sum = sum(n))
+# 
+# iteratedToM_liar_mor0 <- filter(iteratedToM_liar, mor==0)
+# 
+# depth.geometric <- function(d, val, depth){
+#   d = logitToProb(pmin(9999, pmax(-9999, d)))
+#   dgeom(depth, d)*val
+# }
+# 
+# newVal = iteratedToM_liar_mor0$val*dgeom(iteratedToM_liar_mor0$depth, 0.1)
+# mean.predicted <- function(){
+#   
+# }
+# aggregate(newVal, by=list(ksay=iteratedToM_liar_mor0$ksay, 
+#                           k=iteratedToM_liar_mor0$k, 
+#                           p=iteratedToM_liar_mor0$p, 
+#                           expt=iteratedToM_liar_mor0$expt), 
+#           FUN=sum)
+# depth.geometric.loglik <- function(y, d, k, ksay){
+#   
+#   sum(
+#     pmax(dmultinom(y, 1, logistic.detect(kstar, beta, offset), log=T), -9999)
+#   )
+# }
+# 
+# depth.LL <- function(d){
+#   expt = iteratedToM_liar_mor0$expt
+#   p = iteratedToM_liar_mor0$p
+#   depth = iteratedToM_liar_mor0$depth
+#   k = iteratedToM_liar_mor0$k
+#   ksay = iteratedToM_liar_mor0$ksay
+#   val = iteratedToM_liar_mor0$val
+#   actual = countsLie$n  
+#   #d=probToLogit(0.1)
+#   
+#   weighted = aggregate(depth.geometric(d, val, depth), 
+#                        by=list(ksay=ksay, 
+#                                k=k, 
+#                                p=p, 
+#                                expt=expt), 
+#                        FUN=sum)
+#   countsLie3 <- countsLie2 %>%
+#     left_join(weighted) %>%
+#     group_by(expt, p, k) %>%
+#     mutate(norm_x = x/sum(x))
+#   
+#   pred = 0
+#   for(e in unique(countsLie3$expt)){
+#     for(p in unique(countsLie3$p)){
+#       for(k in unique(countsLie3$k)){
+#         thisCount = countsLie3 %>%
+#           filter(expt == e, p == p, k == k)
+#         pred = pred + dmultinom(thisCount$n, thisCount$sum[1], thisCount$norm_x, log=T)
+#       }
+#     }
+#   }
+#   
+#   #pred = depth.geometric(d, predicted, k, ksay)
+#   neg.log.lik = -1*sum(pred)
+#   neg.log.lik
+# }
 
 # depth.fit <- summary(mle(depth.LL,
 #            start=list(d=rnorm(1,0,1)),
@@ -451,42 +617,7 @@ depth.LL <- function(d){
 
 
 
-### Compile log likelihood
 
-```{r}
-randomOpp.maxLogLik = logliks_randomOpp_m.l %>%
-  filter(loglik == max(logliks_randomOpp_m.l$loglik))
-recursive.maxLogLik = logliks_m %>%
-  filter(loglik == max(logliks_m$loglik))
-
-
-data.frame(model = c("Everybody Lies\nHeuristic", 
-                     "Some People Lie\nHeuristic", 
-                     "Random Opponent", 
-                     #paste0("random_opponent\n+aversion (m=",randomOpp.maxLogLik$mor,")"), 
-                     "Recursive ToM", 
-                     paste0("Recursive ToM\n+ Aversion (η = ",recursive.maxLogLik$mor,")")),
-           loglik = c(allLies.fit@m2logL, 
-                      someLies.fit@m2logL, 
-                      -product, 
-                      #-randomOpp.maxLogLik$loglik, 
-                      -iteratedProduct, 
-                      -recursive.maxLogLik$loglik)) %>%
-  mutate(model = fct_relevel(model, 
-                             "Everybody Lies\nHeuristic", 
-                             "Some People Lie\nHeuristic", 
-                             "Random Opponent", 
-                             #paste0("random_opponent\n+aversion (m=",randomOpp.maxLogLik$mor,")"), 
-                             "Recursive ToM", 
-                             paste0("Recursive ToM\n+ Aversion (η = ",recursive.maxLogLik$mor,")"))) %>%
-  ggplot(aes(x=model, y=log10(loglik))) +
-  geom_bar(stat="identity", fill="black") +
-  ggtitle("comparison of lying models") +
-  scale_x_discrete("Model") +
-  scale_y_continuous("-log(likelihood)", limits=c(0,8), breaks=seq(0,8,2), labels=comma(10^seq(0,8,2))) +
-  theme_minimal()
-ggsave("img/simpleModels/compare_lying.png")
-```
 
 
 ## receiver / detector
@@ -540,8 +671,8 @@ k^* > E[k] & 1-\Phi(k^* \mid k, p) \\
 signifTesting.detect <- function(kstar, p){
   #binom.test(kstar, 10, p, alternative="two.sided")$p.value
   n = 10
-  p = logitToProb(pmin(9999, pmax(-9999, p)))
-  1-ifelse(kstar <= n*p, pbinom(kstar, n, p, lower.tail=T), pbinom(kstar-1, n, p, lower.tail=F))
+  p = logitToProb(pmin(10, pmax(-10, p)))
+  1-ifelse(kstar < n*p, pbinom(kstar, n, p, lower.tail=T), pbinom(kstar-1, n, p, lower.tail=F))
 }
 
 signifTesting.loglik <- function(y, kstar, p){
@@ -570,10 +701,22 @@ signifTesting.fit <- summary(mle(signifTesting.LL,
                       p0.8=rnorm(1,0,2)),
            method = "BFGS"))
 signifTesting.fit
+
+data.frame(kstar=rep(0:10, 11*3), 
+           p=rep(c(0.2,0.5,0.8), each=11),
+           p.star = rep(c(signifTesting.fit@coef['p0.2','Estimate'], 
+                          signifTesting.fit@coef['p0.5','Estimate'], 
+                          signifTesting.fit@coef['p0.8','Estimate']), each=11)) %>%
+  mutate(predicted = signifTesting.detect(kstar, p.star)) %>%
+  ggplot(aes(x=kstar, y=predicted, colour=as.factor(p))) +
+  geom_line()
+humanLie.predSomeLies$predicted <- logitToProb(someLies.poisson(rep(rep(0:10, each=11),2), rep(0:10, 11*2), someLies.fit@coef['p','Estimate'], rep(c(1,-1),each=11*11), someLies.fit@coef['theta','Estimate'], someLies.fit@coef['weight','Estimate']))
+
 ```
 
 
-### no ToM / Random Opponent detector
+
+### no ToM + aversion penalty --- no difference of aversion penalty
 
 ```{r}
 p_t.ksay.r_p.L <- function(p, p.L) {
@@ -589,23 +732,24 @@ p_t.ksay.r_p.L <- function(p, p.L) {
 #                       mor=numeric(),
 #                       ks=numeric(), # ksay in Detector, k in Liar
 #                       val=numeric()) # prop in Detector, expLie in Liar
-# 
-# for(i in c(0.2, 0.5, 0.8)){
-#   for(j in c(4,5)){
-#     Expt = j
-#     moral = 0
-#     sim.D <- mapply(p.D_bs.ksay.r,0:10, i, p_t.ksay.r_p.L(i, rep(1/11,11)))
-#     
-#     noToM_detector <- bind_rows(noToM_detector,
-#                        data.frame(role="Detector", p=i, expt=paste0("expt",j),
-#                                           mor=0,
-#                                           ks = rep(0:10),
-#                                           val=as.vector(t(sim.D))))
+# moral = 0
+# for(m in -5:25){
+#   moral_receiver = m #calibrate receiver utility
+#   for(i in c(0.2, 0.5, 0.8)){
+#     for(j in c(4,5)){
+#       Expt = j
+#       sim.D <- mapply(p.D_bs.ksay.r,0:10, i, lastlvl=TRUE, p_t.ksay.r_p.L(i, rep(1/11,11)))
+#       
+#       noToM_detector <- bind_rows(noToM_detector,
+#                          data.frame(role="Detector", p=i, expt=paste0("expt",j),
+#                                             mor=m,
+#                                             ks = rep(0:10),
+#                                             val=as.vector(t(sim.D))))
+#     }
 #   }
 # }
-# 
-# write_csv(noToM_detector, "lie-models/noToM_receiver_prior0.5.csv")
-noToM_detector <- read_csv("lie-models/noToM_receiver_prior0.5.csv")
+# write.csv(noToM_detector, "lie-models/noToM_receiver_all.csv")
+noToM_detector <- read_csv("lie-models/noToM_receiver_all.csv")
 
 full.counts.detect <- countsDetect %>%
   group_by(expt, reportedDrawn, callBS) %>%
@@ -617,86 +761,39 @@ full.counts.detect.p <- countsDetect %>%
   filter(callBS == "True") %>%
   select(-c(callBS, n))
 
-noToM_detector %>%
-  ggplot(aes(x=ks, y=val, colour=as.factor(p))) +
-  geom_line(stat="summary", lty="dashed") +
-  geom_line(data=full.counts.detect.p, aes(x=reportedDrawn, y=prop, colour=as.factor(probabilityRed))) +
-  facet_grid(expt ~ .)
-
-
-
-
-product.d <- 0
-for(e in c("expt4","expt5")){
-  for(prob in c(0.2, 0.5, 0.8)){
-    for(t in 0:10){
-      this.prob <- filter(noToM_detector,expt==e, p==prob, ks==t)$val #vector for p=0.2, 0.5, 0.8 are the same
-      this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
-      loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), prob=this.prob, log=T)
-      print(paste(e, ", p =", prob, "true =", t, ":", loglik))
-      product.d <- product.d + loglik
-    }
-  }
-}
--product.d
-```
-
-### random opponent + aversion penalty --- no difference of aversion penalty
-
-```{r}
-noToM_detector.m <- data.frame(role=factor(),
-                      p=numeric(), 
-                      expt=factor(),
-                      mor=numeric(),
-                      ks=numeric(), # ksay in Detector, k in Liar
-                      val=numeric()) # prop in Detector, expLie in Liar
-moral = 0
-for(m in -5:25){
-  moral_receiver = m #calibrate receiver utility
-  for(i in c(0.2, 0.5, 0.8)){
-    for(j in c(4,5)){
-      Expt = j
-      sim.D <- mapply(p.D_bs.ksay.r,0:10, i, p_t.ksay.r_p.L(i, rep(1/11,11)))
-      
-      noToM_detector.m <- bind_rows(noToM_detector.m,
-                         data.frame(role="Detector", p=i, expt=paste0("expt",j),
-                                            mor=m,
-                                            ks = rep(0:10),
-                                            val=as.vector(t(sim.D))))
-    }
-  }
-}
-moral_receiver = 0
-
 logliks_randomOpp_m.d <- data.frame(mor = numeric(), loglik = numeric())
-for(m in unique(noToM_detector.m$mor)){
+for(m in unique(noToM_detector$mor)){
   tempProd <- 0
-  noToM_detector.mX <- filter(noToM_detector.m, mor==m)
+  noToM_detector.mX <- filter(noToM_detector, mor==m)
   for(e in c("expt4","expt5")){
     for(prob in c(0.2, 0.5, 0.8)){
       # tempProd <- 0
       for(t in 0:10){
         this.prob <- filter(noToM_detector.mX,expt==e, p==prob, ks==t)$val #vector for p=0.2, 0.5, 0.8 are the same
-        this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
-        loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), prob=this.prob, log=T)
+        this.counts <- filter(countsDetect, expt==e, probabilityRed==prob, reportedDrawn==t)
+        n <- filter(this.counts, callBS=="True")$n
+        total <- sum(this.counts$n)
+        loglik <- log(this.prob)*n + log(1-this.prob)*(total-n)
+        # loglik <- dbinom(n, total, this.prob, log=T)
         #print(paste(e, ", p =", prob, "true =", t, ":", loglik))
         tempProd <- tempProd + loglik
       }
-      # logliks_randomOpp_m.d <- bind_rows(logliks_randomOpp_m.d, data.frame(mor=m, expt=e, p=prob, loglik=tempProd))
     }
   }
   logliks_randomOpp_m.d <- bind_rows(logliks_randomOpp_m.d, data.frame(mor=m, loglik=tempProd))
 }
 logliks_randomOpp_m.d
 
+best.randOpp.receiver <- logliks_randomOpp_m.d %>%
+  filter(-loglik == min(-loglik))
 
 # using at BS calling aversion by condition
-# ggplot(logliks_randomOpp_m.d, aes(x=mor, y=-loglik, colour=as.factor(p), linetype=expt)) +
-#   geom_point(alpha=0.8) +
-#   geom_line() +
-#   theme_minimal()
-logliks_randomOpp_m.d %>%
-  filter(-loglik == min(-loglik))
+noToM_detector %>%
+  filter(mor == best.randOpp.receiver$mor) %>%
+  ggplot(aes(x=ks, y=val, colour=as.factor(p), linetype=expt)) +
+  geom_point(alpha=0.8) +
+  geom_line() +
+  theme_minimal()
 ```
 
 
@@ -713,11 +810,11 @@ logliks_randomOpp_m.d %>%
 # 
 # for(i in c(0.2, 0.5, 0.8)){
 #   for(j in c(-5:25)){
-#     moral = j
+#     moral_receiver = j
 #     for(k in c(4,5)){
 #       Expt = k
 #       for(d in 0:40){
-#         sim.D <- iterate.D(d, i, rep(0.5,11))
+#         sim.D <- mapply(p.D_bs.ksay.r,0:10, i, lastlvl=TRUE, iterate.L(d,i, rep(0.5,11)))
 # 
 #         iteratedToM_detector <- bind_rows(iteratedToM_detector,
 #                                 data.frame(role="Detector", p=i, expt=paste0("expt",k),
@@ -729,79 +826,16 @@ logliks_randomOpp_m.d %>%
 #     }
 #   }
 # }
-# write.csv(iteratedToM_detector, "lie-models/recursiveToM_receiver_prior0.5.csv")
-iteratedToM_detector <- read.csv("lie-models/recursiveToM_receiver_prior0.5.csv")
+# write.csv(iteratedToM_detector, "lie-models/recursiveToM_receiver_all.csv")
+iteratedToM_detector <- read.csv("lie-models/recursiveToM_receiver_all.csv")
 
 
 iteratedToM_detector_weighted <- iteratedToM_detector %>%
-  mutate(depthGeomWeight = dgeom(depth, 0.1),
-         weightedVal = val*depthGeomWeight) %>%
   group_by(p, expt, mor, ks) %>%
-  summarise(meanVal = sum(weightedVal))
-
-iteratedToM_detector_weighted %>%
-  filter(mor == 0) %>%
-  ggplot(aes(x=ks, y=meanVal, colour=as.factor(p))) +
-  geom_line(stat="summary", lty="dashed") +
-  geom_line(data=full.counts.detect.p, aes(x=reportedDrawn, y=prop, colour=as.factor(probabilityRed))) +
-  facet_grid(expt ~ .)
+  mutate(w = dgeom(depth, 0.1) / sum(dgeom(0:40, 0.1))) %>%
+  summarise(wval = sum(w*val))
 
 
-iteratedToM_detector_m0 <- filter(iteratedToM_detector_weighted, mor==0)
-iteratedProduct.d <- 0
-for(e in c("expt4","expt5")){
-  for(prob in c(0.2, 0.5, 0.8)){
-    for(t in 0:10){
-      this.prob <- filter(iteratedToM_detector_m0,expt==e, p==prob, ks==t)$meanVal #matrix for p=0.2, 0.5, 0.8 are the same
-      this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
-      loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), this.prob, log=T)
-      print(paste(e, ",", "p =", prob, "true =", t, ":", loglik))
-      iteratedProduct.d <- iteratedProduct.d + loglik
-    }
-  }
-}
-
--iteratedProduct.d
-```
-
-
-
-
-### find best fit lying aversion for detector, each conditions
-```{r}
-logliks_m.d <- data.frame(mor = numeric(), expt=factor(), p=numeric(), loglik = numeric())
-for(m in unique(iteratedToM_detector$mor)){
-  iteratedToM_detector_mX <- filter(iteratedToM_detector_weighted, mor==m)
-  for(e in c("expt4","expt5")){
-    for(prob in c(0.2, 0.5, 0.8)){
-      tempProd <- 0
-      for(t in 0:10){
-        this.prob <- filter(iteratedToM_detector_mX,expt==e, p==prob, ks==t)$meanVal #matrix for p=0.2, 0.5, 0.8 are the same
-        this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
-        loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), this.prob, log=T)
-        #print(paste(e, ",", "p =", prob, "true =", t, ":", loglik))
-        tempProd <- tempProd + loglik
-      }
-      logliks_m.d <- bind_rows(logliks_m.d, data.frame(mor=m, expt=e, p=prob, loglik=tempProd))
-    }
-  }
-}
-
-logliks_m.d %>%
-  ggplot(aes(x=mor, y=-loglik, colour=as.factor(p), linetype=expt)) +
-  geom_point(alpha=0.8) +
-  geom_line() +
-  theme_minimal()
-
-logliks_m.d %>%
-  group_by(expt, p) %>%
-  filter(-loglik == min(-loglik))
-```
-
-
-### find best fit lying aversion for detector, all conditions
-
-```{r}
 logliks_m.d <- data.frame(mor = numeric(), loglik = numeric())
 for(m in unique(iteratedToM_detector$mor)){
   iteratedToM_detector_mX <- filter(iteratedToM_detector_weighted, mor==m)
@@ -809,9 +843,12 @@ for(m in unique(iteratedToM_detector$mor)){
   for(e in c("expt4","expt5")){
     for(prob in c(0.2, 0.5, 0.8)){
       for(t in 0:10){
-        this.prob <- filter(iteratedToM_detector_mX,expt==e, p==prob, ks==t)$meanVal #matrix for p=0.2, 0.5, 0.8 are the same
-        this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
-        loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), this.prob, log=T)
+        this.prob <- filter(iteratedToM_detector_mX,expt==e, p==prob, ks==t)$wval #matrix for p=0.2, 0.5, 0.8 are the same
+        this.counts <- filter(countsDetect, expt==e, probabilityRed==prob, reportedDrawn==t)
+        n <- filter(this.counts, callBS=="True")$n
+        total <- sum(this.counts$n)
+        loglik <- log(this.prob)*n + log(1-this.prob)*(total-n)
+        # loglik <- dbinom(n, total, this.prob, log=T)
         #print(paste(e, ",", "p =", prob, "true =", t, ":", loglik))
         tempProd <- tempProd + loglik
       }
@@ -820,27 +857,10 @@ for(m in unique(iteratedToM_detector$mor)){
   logliks_m.d <- bind_rows(logliks_m.d, data.frame(mor=m, loglik=tempProd))
 }
 
-logliks_m.d
+best.recursiveToM.receiver <- logliks_m.d %>%
+  filter(loglik == max(loglik))
 ```
 
-
-
-### Compile log likelihood
-
-```{r}
-recursive.d.maxLogLik = logliks_m.d %>%
-  filter(loglik == max(logliks_m.d$loglik))
-
-data.frame(model = c("logistic", "signifTesting", "random_opponent", "recursiveToM", paste0("recursiveToM\n+aversion (m=",recursive.d.maxLogLik$mor,")")),
-           loglik = c(logistic.fit@m2logL, signifTesting.fit@m2logL, -product.d, -iteratedProduct.d, -recursive.d.maxLogLik$loglik)) %>%
-  mutate(model = fct_relevel(model, "logistic", "signifTesting", "random_opponent", "recursiveToM", paste0("recursiveToM\n+aversion (m=",recursive.d.maxLogLik$mor,")"))) %>%
-  ggplot(aes(x=model, y=log(loglik))) +
-  geom_bar(stat="identity") +
-  ggtitle("comparison of detecting models") +
-  scale_y_continuous("-log(likelihood)", limits=c(0,11), breaks=seq(0,20,5), labels=10^seq(0,20,5)) +
-  theme_minimal()
-ggsave("img/simpleModels/compare_detecting.png")
-```
 
 
 ```{r}
@@ -848,153 +868,89 @@ senderModels = c(
   "EverybodyLies", 
   "SomePeopleLie", 
   "RandomOpponent", 
-  "RecursiveToM", 
-  "RecursiveToMAversion"
+  "RecursiveToM"
 )
 senderValues = c(
   "EverybodyLies" = bquote(atop("Everybody Lies","Heuristic")), 
   "SomePeopleLie" = bquote(atop("Some People Lie","Heuristic")), 
-  "RandomOpponent" = "Random Opponent", 
-  "RecursiveToM" = "Recursive ToM", 
-  "RecursiveToMAversion" = bquote(atop("Recursive ToM","+ Aversion ("*eta*"="*.(recursive.maxLogLik$mor)*")"))
+  "RandomOpponent" = bquote("Random Opponent ("*eta*"="*.(best.randOpp$mor)*")"), 
+  "RecursiveToM" = bquote("Recursive ToM ("*eta*"="*.(best.recursiveToM$mor)*")")
 )
 senderLikelihood = c(
-  allLies.fit@m2logL, 
-  someLies.fit@m2logL, 
-  -product, 
-  -iteratedProduct, 
-  -recursive.maxLogLik$loglik
+  allLies.fit@m2logL/2, 
+  someLies.fit@m2logL/2, 
+  -best.randOpp$loglik, 
+  -best.recursiveToM$loglik
+)
+
+senderAIC = c(
+  allLies.fit@m2logL + 2*2, 
+  someLies.fit@m2logL + 2*3, 
+  -2*best.randOpp$loglik + 2*2, 
+  -2*best.recursiveToM$loglik + 2*3
 )
 
 receiverModels = c(
   "NHST", 
   "RandomOpponent", 
-  "RecursiveToM", 
-  "RecursiveToMAversion"
+  "RecursiveToM"
 )
 receiverValues = c(
   "NHST" = bquote(atop("Null Hypothesis","Significance Testing")), 
-  "RandomOpponent" = "Random Opponent", 
-  "RecursiveToM" = "Recursive ToM", 
-  "RecursiveToMAversion" = bquote(atop("Recursive ToM","+ Aversion ("*eta*"="*.(recursive.d.maxLogLik$mor)*")"))
+  "RandomOpponent" = bquote("Random Opponent ("*eta*"="*.(best.randOpp.receiver$mor)*")"), 
+  "RecursiveToM" = bquote("Recursive ToM ("*eta*"="*.(best.recursiveToM.receiver$mor)*")")
 )
 receiverLikelihood = c(
-  signifTesting.fit@m2logL, 
-  -product.d, 
-  -iteratedProduct.d, 
-  -recursive.d.maxLogLik$loglik
+  signifTesting.fit@m2logL/2, 
+  -best.randOpp.receiver$loglik, 
+  -best.recursiveToM.receiver$loglik
 )
 
-allModels = factor(c(senderModels, receiverModels))
-allLikelihoods = c(senderLikelihood, receiverLikelihood)
-
-modelColors = c(
-  "heuristicAllLies" = "lightgreen", 
-  "heuristicSomeLies" = "forestgreen", 
-  "heuristicNHST" = "yellowgreen",
-  "randOpp" = "orange", 
-  "recursiveToM" = "red", 
-  "recursiveToMAvers" = "darkred"
+receiverAIC = c(
+  signifTesting.fit@m2logL + 2*3, 
+  -2*best.randOpp.receiver$loglik + 2*2, 
+  -2*best.recursiveToM.receiver$loglik +2*3
 )
 
-data.frame(role = c(rep("sender",5), rep("receiver",4)),
-           model = allModels,
-           modelCol = c("heuristicAllLies", 
-                        "heuristicSomeLies", 
-                        "randOpp", 
-                        "recursiveToM", 
-                        "recursiveToMAvers", 
-                        "heuristicNHST",
-                        "randOpp", 
-                        "recursiveToM", 
-                        "recursiveToMAvers"),
-           loglik = allLikelihoods) %>%
-  mutate(model = fct_relevel(model,
-                         "Everybody Lies\nHeuristic",
-                         "Some People Lie\nHeuristic",
-                         "Null Hypothesis Significance Testing", 
-                         "Random Opponent",
-                         "Recursive ToM",
-                         paste0("Recursive ToM\n+ Aversion (η=",recursive.maxLogLik$mor,")"),
-                         paste0("Recursive ToM\n+ Aversion (η=",recursive.d.maxLogLik$mor,")")),
-         rounded = round(loglik)) %>%
-  ggplot(aes(x=role, y=log10(loglik), fill=modelCol)) +
-  geom_bar(stat="identity", position="dodge") +
-  ggtitle("comparison of lying models") +
-  scale_x_discrete("Model") +
-  scale_y_continuous("-log(likelihood)", limits=c(0,8), breaks=seq(0,8,2), labels=comma(10^seq(0,8,2))) +
-  scale_fill_manual(values = modelColors) +
-  theme_minimal()
-```
 
-```{r}
-data.frame(role = c(rep("sender",5), rep("receiver",4)),
-           model = allModels,
-           modelCol = c("heuristicAllLies", 
-                        "heuristicSomeLies", 
-                        "randOpp", 
-                        "recursiveToM", 
-                        "recursiveToMAvers", 
-                        "heuristicNHST",
-                        "randOpp", 
-                        "recursiveToM", 
-                        "recursiveToMAvers"),
-           loglik = allLikelihoods) %>%
-  mutate(model = fct_relevel(model,
-                         "Everybody Lies\nHeuristic",
-                         "Some People Lie\nHeuristic",
-                         "Null Hypothesis Significance Testing", 
-                         "Random Opponent",
-                         "Recursive ToM",
-                         paste0("Recursive ToM\n+ Aversion (η=",recursive.maxLogLik$mor,")"),
-                         paste0("Recursive ToM\n+ Aversion (η=",recursive.d.maxLogLik$mor,")")),
-         rounded = round(loglik))
-```
-
-
-```{r}
 axisLineSize = 1
-axisLineColour = "gray40"
+axisLineColour = "black"
 axisTitleSizeComp = 12
-axisTextSizeComp = 9
+axisTextSizeComp = 8
 
 senderModelFig <- data.frame(model = senderModels,
-           loglik = senderLikelihood) %>%
+           loglik = senderAIC) %>%
   mutate(model = fct_relevel(model,
                          "EverybodyLies",
                          "SomePeopleLie",
                          "RandomOpponent",
-                         "RecursiveToM",
-                         "RecursiveToMAversion")) %>%
-  ggplot(aes(x=model, y=log10(loglik))) +
-  geom_bar(stat="identity", fill="black") +
+                         "RecursiveToM")) %>%
+  ggplot(aes(x=model, y=loglik)) +
+  geom_bar(stat="identity", fill="gray40", colour="black") +
   scale_x_discrete("", labels=senderValues) +
-  scale_y_continuous("Sender reporting k* given true k\n-log(likelihood)", limits=c(0,8), breaks=seq(0,8,2), labels=comma(10^seq(0,8,2)), expand=c(0,0)) +
-  scale_fill_manual(values = modelColors) +
+  scale_y_continuous("Sender reporting k* given true k\nAIC", limits=c(0, 30000), expand=c(0,0)) +
   theme_minimal() +
   theme(axis.title = element_text(size=axisTitleSizeComp),
         axis.text = element_text(size=axisTextSizeComp),
         axis.line = element_line(size=axisLineSize, colour=axisLineColour))
 
 receiverModelFig <- data.frame(model = receiverModels,
-           loglik = receiverLikelihood) %>%
+           loglik = receiverAIC) %>%
   mutate(model = fct_relevel(model,
                          "NHST",
                          "RandomOpponent",
-                         "RecursiveToM",
-                         "RecursiveToMAversion")) %>%
-  ggplot(aes(x=model, y=log10(loglik))) +
-  geom_bar(stat="identity", colour="black", fill="black") +
+                         "RecursiveToM")) %>%
+  ggplot(aes(x=model, y=loglik)) +
+  geom_bar(stat="identity", colour="black", fill="gray40") +
   scale_x_discrete("Model", labels = receiverValues) +
-  scale_y_continuous("Receiver calling BS given reported k*\n-log(likelihood)", limits=c(0,8), breaks=seq(0,8,2), labels=comma(10^seq(0,8,2)), expand=c(0,0)) +
-  scale_fill_manual(values = modelColors) +
+  scale_y_continuous("Receiver calling BS given reported k*\n-AIC", limits=c(0, 30000), expand=c(0,0)) +
   theme_minimal() +
   theme(axis.title = element_text(size=axisTitleSizeComp),
         axis.text = element_text(size=axisTextSizeComp),
         axis.line = element_line(size=axisLineSize, colour=axisLineColour))
 
 plot_grid(senderModelFig, receiverModelFig, nrow=2)
-ggsave("img/simpleModels/loglikelihoods.png", height=7, width=7)
+ggsave("img/simpleModels/loglikelihoods.pdf", height=7, width=7)
 ```
 
 
@@ -1003,311 +959,54 @@ ggsave("img/simpleModels/loglikelihoods.png", height=7, width=7)
 ### Compare Lying Aversion
 
 ```{r}
-ll.lie.df.prev <- logliks_m %>%
-  filter(mor >= 4 & mor <= 5) %>%
-  mutate(mor=mor+1,
-         ll.lie.prev = loglik) %>%
-  select(mor, ll.lie.prev)
-ll.lie.A <- logliks_m %>%
-  filter(mor >= 5 & mor <= 6) %>%
-  select(mor, loglik) %>%
-  left_join(ll.lie.df.prev) %>%
-  mutate(diff.bw = -loglik-(-ll.lie.prev)) %>%
-  summarise(diff = diff(diff.bw)) %>%
-  .$diff
-(se.lie.A = sqrt(1/ll.lie.A))
-
-
-ll.detect.df.prev <- logliks_m.d %>%
-  filter(mor >= 10 & mor <= 11) %>%
-  mutate(mor=mor+1,
-         ll.detect.prev = loglik) %>%
-  select(mor, ll.detect.prev)
-ll.detect.A <- logliks_m.d %>%
-  filter(mor >= 11 & mor <= 12) %>%
-  select(mor, loglik) %>%
-  left_join(ll.detect.df.prev) %>%
-  mutate(diff.bw = -loglik-(-ll.detect.prev)) %>%
-  summarise(diff = diff(diff.bw)) %>%
-  .$diff
-(se.detect.A = sqrt(1/ll.detect.A))
-
-wald.z.test <- function(m1, sd1, m2, sd2){
-  z <- (m1 - m2) / sqrt(sd1^2 + sd2^2)
-  p <- pnorm(abs(z), lower.tail=F)
-  return(data.frame(m1, sd1, m2, sd2, z, p))
-}
-
-wald.z.test(5, se.lie.A, 11, se.detect.A)
-```
-
-
-
-
-
-
-
-
-
-
-
-
-### Check Robustness of Lying Aversion across diff params ###
-
-
-```{r}
-iteratedToM_liar.check <- data.frame(role=factor(),
-                      p=numeric(),
-                      expt=factor(),
-                      mor=numeric(),
-                      depth=numeric(),
-                      k=numeric(),
-                      ksay=numeric(),
-                      val=numeric())
-
-for(i in c(0.2, 0.5, 0.8)){
-  for(j in -5:25){
-    moral = j
-    for(k in c(4,5)){
-      Expt = k
-      for(d in 0:40){
-        sim.L <- p.L_ksay.k.r(i, iterate.D(d, i, rep(0.5,11)))
-
-        iteratedToM_liar <- bind_rows(iteratedToM_liar,
-                                data.frame(role="Liar", p=i, expt=paste0("expt",k),
-                                      mor=j,
-                                      depth=d,
-                                      k = rep(0:10, each=11),
-                                      ksay = rep(0:10, 11),
-                                      val=as.vector(sim.L)))
-      }
-    }
-  }
-}
-
-write_csv(iteratedToM_liar, "lie-models/changeParams/recursiveToM_sender_robust.csv")
-#iteratedToM_liar <- read.csv("lie-models/recursiveToM_sender_robust.csv")
-
-# iteratedToM_liar %>%
-#   mutate(depthGeomWeight = dgeom(depth, 0.1),
-#          weightedVal = val*depthGeomWeight) %>%
-#   group_by(p, expt, mor, k, ksay) %>%
-#   summarise(meanVal = sum(weightedVal)) %>%
-#   filter(mor %in% seq(-5,25, 10), expt=="expt4") %>%
-#   ggplot(aes(x=k, y=ksay, fill=meanVal)) +
-#   geom_tile() +
-#   facet_grid(p ~ mor)
+# ll.lie.df.prev <- logliks_m %>%
+#   filter(mor >= 4 & mor <= 5) %>%
+#   mutate(mor=mor+1,
+#          ll.lie.prev = loglik) %>%
+#   select(mor, ll.lie.prev)
+# ll.lie.A <- logliks_m %>%
+#   filter(mor >= 5 & mor <= 6) %>%
+#   select(mor, loglik) %>%
+#   left_join(ll.lie.df.prev) %>%
+#   mutate(diff.bw = -loglik-(-ll.lie.prev)) %>%
+#   summarise(diff = diff(diff.bw)) %>%
+#   .$diff
+# (se.lie.A = sqrt(1/ll.lie.A))
 # 
-# iteratedToM_liar %>%
-#   mutate(depthGeomWeight = dgeom(depth, 0.25),
-#          weightedVal = val*depthGeomWeight) %>%
-#   group_by(p, expt, mor, k, ksay) %>%
-#   summarise(meanVal = sum(weightedVal)) %>%
-#   filter(mor %in% seq(-5,25, 10), expt=="expt4") %>%
-#   ggplot(aes(x=k, y=ksay, fill=meanVal)) +
-#   geom_tile() +
-#   facet_grid(p ~ mor)
-```
-
-
-```{r}
-iteratedToM_detector.check <- data.frame(role=factor(),
-                      p=numeric(),
-                      expt=factor(),
-                      mor=numeric(),
-                      depth=numeric(),
-                      ks=numeric(), # ksay in Detector
-                      val=numeric()) # prop in Detector
-
-for(i in c(0.2, 0.5, 0.8)){
-  for(j in c(-5:25)){
-    moral = j
-    for(k in c(4,5)){
-      Expt = k
-      for(d in 0:40){
-        sim.D <- iterate.D(d, i, rep(0.5,11))
-
-        iteratedToM_detector <- bind_rows(iteratedToM_detector,
-                                data.frame(role="Detector", p=i, expt=paste0("expt",k),
-                                      mor=j,
-                                      depth=d,
-                                      ks = 0:10,
-                                      val=as.vector(t(sim.D))))
-      }
-    }
-  }
-}
-write_csv(iteratedToM_detector, "lie-models/changeParams/recursiveToM_receiver_robust.csv")
-
-# iteratedToM_detector %>%
-#   mutate(depthGeomWeight = dgeom(depth, 0.1),
-#          weightedVal = val*depthGeomWeight) %>%
-#   group_by(p, expt, mor, ks) %>%
-#   summarise(meanVal = sum(weightedVal)) %>%
-#   filter(mor %in% seq(-5,25, 5), expt=="expt4") %>%
-#   ggplot(aes(x=ks, y=meanVal, colour=as.factor(mor))) +
-#   geom_line() +
-#   facet_wrap(~p)
 # 
-# iteratedToM_detector %>%
-#   mutate(depthGeomWeight = dgeom(depth, 0.25),
-#          weightedVal = val*depthGeomWeight) %>%
-#   group_by(p, expt, mor, ks) %>%
-#   summarise(meanVal = sum(weightedVal)) %>%
-#   filter(mor %in% seq(-5,25, 5), expt=="expt4") %>%
-#   ggplot(aes(x=ks, y=meanVal, colour=as.factor(mor))) +
-#   geom_line() +
-#   facet_wrap(~p)
+# ll.detect.df.prev <- logliks_m.d %>%
+#   filter(mor >= 10 & mor <= 11) %>%
+#   mutate(mor=mor+1,
+#          ll.detect.prev = loglik) %>%
+#   select(mor, ll.detect.prev)
+# ll.detect.A <- logliks_m.d %>%
+#   filter(mor >= 11 & mor <= 12) %>%
+#   select(mor, loglik) %>%
+#   left_join(ll.detect.df.prev) %>%
+#   mutate(diff.bw = -loglik-(-ll.detect.prev)) %>%
+#   summarise(diff = diff(diff.bw)) %>%
+#   .$diff
+# (se.detect.A = sqrt(1/ll.detect.A))
+# 
+# wald.z.test <- function(m1, sd1, m2, sd2){
+#   z <- (m1 - m2) / sqrt(sd1^2 + sd2^2)
+#   p <- pnorm(abs(z), lower.tail=F)
+#   return(data.frame(m1, sd1, m2, sd2, z, p))
+# }
+# 
+# wald.z.test(5, se.lie.A, 11, se.detect.A)
 ```
 
+
+
+
+
 ```{r}
-iteratedToM_liar_weighted.new <- iteratedToM_liar %>%
-  mutate(depthGeomWeight = dgeom(depth, 0.25),
-         weightedVal = val*depthGeomWeight) %>%
-  group_by(p, expt, mor, k, ksay) %>%
-  summarise(meanVal = sum(weightedVal))
-
-iteratedToM_detector_weighted.new <- iteratedToM_detector %>%
-  mutate(depthGeomWeight = dgeom(depth, 0.25),
-         weightedVal = val*depthGeomWeight) %>%
-  group_by(p, expt, mor, ks) %>%
-  summarise(meanVal = sum(weightedVal))
-```
-
-
-
-
-
-
-### find best fitting lying aversion, all conditions
-```{r}
-sender.logliks_m <- data.frame(decay = numeric(), mor = numeric(), loglik = numeric())
-for(a in c(0.1, 0.25, 0.5, 1)){
-  ALPH = a
-  iteratedToM_liar.check <- data.frame(role=factor(),
-                        p=numeric(),
-                        expt=factor(),
-                        mor=numeric(),
-                        depth=numeric(),
-                        k=numeric(),
-                        ksay=numeric(),
-                        val=numeric())
-  
-  for(i in c(0.2, 0.5, 0.8)){
-    for(j in 0:20){
-      moral = j
-      for(k in c(4,5)){
-        Expt = k
-        for(d in 0:40){
-          sim.L <- p.L_ksay.k.r(i, iterate.D(d, i, rep(0.5,11)))
-  
-          iteratedToM_liar.check <- bind_rows(iteratedToM_liar.check,
-                                  data.frame(role="Liar", p=i, expt=paste0("expt",k),
-                                        mor=j,
-                                        depth=d,
-                                        k = rep(0:10, each=11),
-                                        ksay = rep(0:10, 11),
-                                        val=as.vector(sim.L)))
-        }
-      }
-    }
-  }
-  for(dec in c(0.05, 0.1, 0.25, 0.5, 1)){
-    iteratedToM_liar_weighted.new <- iteratedToM_liar.check %>%
-      mutate(depthGeomWeight = dgeom(depth, dec),
-             weightedVal = val*depthGeomWeight) %>%
-      group_by(p, expt, mor, k, ksay) %>%
-      summarise(meanVal = sum(weightedVal))
-    for(m in unique(iteratedToM_liar.check$mor)){
-      iteratedToM_liar_mX <- filter(iteratedToM_liar_weighted.new, mor==m)
-      tempProd <- 0
-      for(e in c("expt4","expt5")){
-        for(prob in c(0.2, 0.5, 0.8)){
-          for(t in 0:10){
-            this.matr <- matrix(filter(iteratedToM_liar_mX,expt==e, p==prob)$meanVal, nrow=11, ncol=11) #matrix for p=0.2, 0.5, 0.8 are the same
-            this.counts <- filter(countsLie, expt==e, probabilityRed==prob)
-            loglik <- dmultinom(filter(this.counts, drawnRed==t)$n, sum(filter(this.counts, drawnRed==t)$n), this.matr[,(t+1)], log=T)
-            tempProd <- tempProd + loglik
-          }
-        }
-      }
-      sender.logliks_m <- bind_rows(sender.logliks_m, data.frame(alpha=a, decay=dec, mor=m, loglik=tempProd))
-    }
-  }
-}
-
-sender.logliks_m.saved <- sender.logliks_m
-write.csv(sender.logliks_m.saved, "sender_params.csv")
-save.sender <- sender.logliks_m %>%
-  group_by(alpha, decay) %>%
-  filter(loglik == max(loglik)) %>%
-  mutate(sender.mor = mor)
-
-
-
-
-receiver.logliks_m <- data.frame(decay = numeric(), mor = numeric(), loglik = numeric())
-
-for(a in c(0.1, 0.25, 0.5, 1)){
-  ALPH = a
-  iteratedToM_detector.check <- data.frame(role=factor(),
-                          p=numeric(),
-                          expt=factor(),
-                          mor=numeric(),
-                          depth=numeric(),
-                          ks=numeric(), # ksay in Detector
-                          val=numeric()) # prop in Detector
-  for(i in c(0.2, 0.5, 0.8)){
-    for(j in c(0:20)){
-      moral = j
-      for(k in c(4,5)){
-        Expt = k
-        for(d in 0:40){
-          sim.D <- iterate.D(d, i, rep(0.5,11))
-  
-          iteratedToM_detector.check <- bind_rows(iteratedToM_detector.check,
-                                  data.frame(role="Detector", p=i, expt=paste0("expt",k),
-                                        mor=j,
-                                        depth=d,
-                                        ks = 0:10,
-                                        val=as.vector(t(sim.D))))
-        }
-      }
-    }
-  }
-  for(dec in c(0.05, 0.1, 0.25, 0.5, 1)){
-    iteratedToM_detector_weighted.new <- iteratedToM_detector.check %>%
-      mutate(depthGeomWeight = dgeom(depth, dec),
-             weightedVal = val*depthGeomWeight) %>%
-      group_by(p, expt, mor, ks) %>%
-      summarise(meanVal = sum(weightedVal))
-    for(m in unique(iteratedToM_detector.check$mor)){
-      iteratedToM_detector_mX <- filter(iteratedToM_detector_weighted.new, mor==m)
-      tempProd <- 0
-      for(e in c("expt4","expt5")){
-        for(prob in c(0.2, 0.5, 0.8)){
-          for(t in 0:10){
-            this.prob <- filter(iteratedToM_detector_mX,expt==e, p==prob, ks==t)$meanVal #matrix for p=0.2, 0.5, 0.8 are the same
-            this.counts <- filter(countsDetect, expt==e, probabilityRed==prob)
-            loglik <- dbinom(filter(this.counts, reportedDrawn==t, callBS=="True")$n, sum(filter(this.counts, reportedDrawn==t)$n), this.prob, log=T)
-            #print(paste(e, ",", "p =", prob, "true =", t, ":", loglik))
-            tempProd <- tempProd + loglik
-          }
-        }
-      }
-      receiver.logliks_m <- bind_rows(receiver.logliks_m, data.frame(alpha=a, decay=dec, mor=m, loglik=tempProd))
-    }
-  }
-}
-
-save.receiver <- receiver.logliks_m %>%
-  filter(decay != 1) %>%
-  group_by(alpha, decay) %>%
-  filter(loglik == max(loglik)) %>%
-  mutate(receiver.mor = mor)
-
-left_join(save.sender, save.receiver, c("alpha","decay")) %>%
-  select(decay, alpha, sender.mor, receiver.mor)
+logliks_m %>%
+  mutate(source="sender") %>%
+  bind_rows(mutate(logliks_m.d, source="receiver")) %>%
+  group_by(source) %>%
+  filter(loglik==max(loglik))
 ```
 
 
