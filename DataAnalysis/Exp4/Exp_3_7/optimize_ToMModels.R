@@ -8,46 +8,48 @@ humanLie <- bs.final %>%
 humanDetect <- bs.final %>%
   filter(roleCurrent == "bullshitDetector")
 
-#p.L_ksay.k.r("expt4", 0.25, 10, 0.5, TRUE, iterate.D(0, "expt4", 0.25, 0.5))[0+2, 0+1]
-#p.L_ksay.k.r <- function(expt, alph, eta.L, p, lastlvl=FALSE, p.D)
-#iterate.D <- function(iter, expt, alph, p, prior=rep(0.1,11))
-p.D_bs.ksay.r(0:10, 0.5, "expt4", 0.25, 7, lastlvl=TRUE, iterate.L(0,"expt4", 0.25, 0.5))
-EV.D_bs.ksay.r(0, 0.5, TRUE, "expt4", 7, TRUE, rep(0.1,11))
-p.D_bs.ksay.r(0, 0.5, "expt4", 0.25, 7, lastlvl=TRUE, rep(0.1,11))
-mapply(p.D_bs.ksay.r, 0, 0.5, "expt4", 0.25, 7, lastlvl=TRUE, rep(0.1,11))
-mapply(p.D_bs.ksay.r, 0:10, 0.5, "expt4", 0.25, 7, lastlvl=TRUE, p_t.ksay.r_p.L(0.5, rep(1/11,11)))[1]
+# 121 x 6 matrix
+humanLieCounts <- humanLie %>%
+  count(expt, probabilityRed, drawnRed, reportedDrawn) %>%
+  complete(expt=c("expt4","expt5"), probabilityRed=c(0.2,0.5,0.8), drawnRed=0:10, reportedDrawn=0:10, fill = list(n = 0)) %>%
+  pull(n) %>%
+  matrix(nrow=121)
 
-
-noToM.s.eval <- function(k, kstar, util, br, alph, eta.S){
-  log(p.L_ksay.k.r.i(k, kstar, util, alph, eta.S, br, TRUE, 0.5))
-}
-round(p.L_ksay.k.r(1, 1, 7, 0.5, TRUE, 0.5),4)
-noToM.s.eval(k, kstar, util, br, 1, 0)
-
- 
-noToM.s.LL <- function(alph, eta.S){
-  k = humanLie$drawnRed
-  kstar = humanLie$reportedDrawn
-  util = ifelse(humanLie$expt=="expt4", 1, -1)
-  br = humanLie$probabilityRed
-  pred = noToM.eval(k, kstar, expt, br, alph, eta.S)
+# 22 x 6 matrix
+humanDetectCounts <- humanDetect %>%
+  count(expt, probabilityRed, reportedDrawn, callBS) %>%
+  complete(expt=c("expt4","expt5"), probabilityRed=c(0.2,0.5,0.8), reportedDrawn=0:10, callBS=c("True","False"), fill = list(n = 0))
   
-  neg.log.lik = -1*sum(pred)
-  neg.log.lik
+humanDetectCounts.T <- humanDetectCounts %>%
+  filter(callBS=="True") %>%
+  pull(n) %>%
+  matrix(nrow=11)
+humanDetectCounts.F <- humanDetectCounts %>%
+  filter(callBS=="False") %>%
+  pull(n) %>%
+  matrix(nrow=11)
+
+noToM.s.predMat <- function(alph, eta.S){
+  mapply(function(i, j){p.L_ksay.k.r(j, alph, eta.S, i, lastlvl=TRUE, rep(0.5,11))}, c(rep(0.2,0.5,0.8), 2), rep(c(1,-1), each=3))
 }
 
-length(br)
-noToM.s.LL(1, 0)
-EV.L_ksay.k.r(k, kstar, util, 7, br, lastlvl=F, 0.5)
-p.L_ksay.k.r.i(k, kstar, util, 1, 7, br, F, 0.5)
+# N = counts of k and k*
+# sum_ k sum_k*  log(p(k*|k))*N(k*|k)
+noToM.s.eval <- function(alph, eta.S, ns){ #ns = 121 x 6 matrix of counts for all conditions
+  sum(log(noToM.s.predMat(alph, eta.S))*ns)
+}
 
-noToM.s.fit <- summary(mle(noToM.s.LL,
-                        start=list(alph=rnorm(1, 1, 0.5),
-                                   eta.S=rnorm(1, 0, 1)),
-                        method = "BFGS"))
-noToM.s.fit
-
-
+# noToM.s.LL <- function(alph, eta.S){
+#   ns = humanLieCounts
+#   neg.log.lik = -noToM.s.eval(alph, eta.S, ns)
+#   neg.log.lik
+# }
+# 
+# noToM.s.fit <- summary(mle(noToM.s.LL,
+#                         start=list(alph=rnorm(1, 1, 0.2),
+#                                    eta.S=rnorm(1, 0, 1)),
+#                         method = "BFGS"))
+# noToM.s.fit
 
 
 
@@ -70,57 +72,42 @@ nullVec <- function(br, kstar){
     br == 0.8 ~ null0.8[kstar+1]
   )
 }
-nullVec(humanDetect$probabilityRed, 5)
 
 
-
-noToM.r.pred <- function(kstar, util, br, alph, eta.R){
-  p.D_bs.ksay.r(kstar, br, util, alph, eta.R, lastlvl=TRUE, nullVec(br, kstar))
-}
-noToM.r.pred(kstar, util, br, 1, 0)
-
-noToM.r.eval <- function(y, kstar, util, br, alph, eta.R){
-  pmax(dbinom(y, 1, noToM.r.pred(kstar, util, br, alph, eta.R), log=T), -9999)
-  # sum(
-  #   pmax(dbinom(y, 1, noToM.r.pred(kstar, util, br, alph, eta.R), log=T), -9999)
-  # )
-}
-noToM.r.eval(y, kstar, util, br, 1, 0)
-
-noToM.r.LL <- function(alph, eta.R){
-  kstar = humanDetect$reportedDrawn
-  y = as.logical(humanDetect$callBS)
-  util = ifelse(humanDetect$expt=="expt4", 1, -1)
-  br = humanDetect$probabilityRed
-  
-  neg.log.lik = -sum(noToM.r.eval(y, kstar, util, br, alph, eta.R))
-  neg.log.lik
+noToM.r.pred <- function(alph, eta.R){
+  matrix(
+    mapply(function(i,j,k) p.D_bs.ksay.r(i, j, k, alph, eta.R, lastlvl=TRUE, nullVec(j, i)), rep(0:10,6), rep(rep(c(0.2,0.5,0.8),each=11),2), rep(c(1,-1), each=33)),
+    nrow=11
+  )
 }
 
-noToM.r.LL(1,0)
+noToM.r.eval <- function(alph, eta.R, ns.T, ns.F){
+  callBSmat = noToM.r.pred(alph, eta.R)
+  sum(log(callBSmat)*ns.T + log(1-callBSmat)*ns.F)
+}
 
-noToM.r.fit <- summary(mle(noToM.r.LL,
-                           start=list(alph=rnorm(1, 1, 0.5),
-                                      eta.R=rnorm(1, 0, 1)),
-                           method = "BFGS"))
-noToM.r.fit
+# noToM.r.LL <- function(alph, eta.R){
+#   ns.T = humanDetectCounts.T
+#   ns.F = humanDetectCounts.F
+#   
+#   neg.log.lik = -noToM.r.eval(alph, eta.R, ns.T, ns.F)
+#   neg.log.lik
+# }
+#
+# noToM.r.fit <- summary(mle(noToM.r.LL,
+#                            start=list(alph=rnorm(1, 1, 0.2),
+#                                       eta.R=rnorm(1, 0, 1)),
+#                            method = "BFGS"))
+# noToM.r.fit
 
 
 
 noToM.LL <- function(alph, eta.S, eta.R){
-  k = bs.final$drawnRed
-  kstar = bs.final$reportedDrawn
-  y = bs.final$callBS
-  util = ifelse(bs.final$expt=="expt4", 1, -1)
-  br = bs.final$probabilityRed
-  role = bs.final$roleCurrent
-  eta = case_when(
-    role == "bullshitter" ~ eta.S,
-    role == "bullshitDetector" ~ eta.R
-  )
-  
-  pred = ifelse(role == "bullshitter", noToM.s.eval(k, kstar, expt, br, alph, eta), noToM.r.eval(y, kstar, util, br, alph, eta))
-  neg.log.lik = -sum(pred)
+  ns.l = humanLieCounts
+  ns.T = humanDetectCounts.T
+  ns.F = humanDetectCounts.F
+
+  neg.log.lik = -noToM.r.eval(alph, eta.R, ns.T, ns.F) - noToM.s.eval(alph, eta.S, ns.l)
   neg.log.lik
 }
 

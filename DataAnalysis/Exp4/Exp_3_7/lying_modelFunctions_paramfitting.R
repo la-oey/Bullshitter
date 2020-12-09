@@ -10,12 +10,8 @@ faPenalty = 5 # 5 # 0
 #moral_receiver = 0 #only use to calibrate BS caller's utility
 
 
-util = 1
-ksay = 6
-# util = [-1, +1] "pts for red" = +1, "pts for blue" = -1
 
-u.L(6, TRUE, FALSE, -1, 7, FALSE)
-u.D(6, TRUE, FALSE, -1, 7, FALSE)
+# util = [-1, +1] "pts for red" = +1, "pts for blue" = -1
 
 u.L <- function(ksay, lie, BS, utilStr, eta.L, lastLvl=FALSE) {
   utility = case_when(
@@ -79,23 +75,7 @@ p.L_ksay.k.r <- function(util, alph, eta.L, p, lastlvl=FALSE, p.D) { #look into 
 # round(p.L_ksay.k.r(1, 1, 7, 0.5, TRUE, rep(0.5,11)),5)
 # round(p.L_ksay.k.r(0.5, rep(0.5,11)) * .8 + 1 / length(0:numMarbles) *.2,4)
 
-returnVectVal <- function(vect, alph, ksay){
-  #mapply(function(i) {softmax(vect, alph)[i+1]}, ksay)
-  softmax(vect, alph)[ksay+1]
-}
-returnVectVal(matrix(0:11, ncol=2), 1, c(2,5))
 
-p.L_ksay.k.r.i <- function(k, ksay, util, alph, eta.L, p, lastlvl=FALSE, p.D) {
-  EV.all <- mapply(function(i) EV.L_ksay.k.r(i, 0:numMarbles, util, eta.L, p, lastlvl=lastlvl, p.D), k)
-  diag(apply(EV.all,2,returnVectVal, alph, ksay))
-
-  #mapply(function(j){matr[j,ksay[j]+1]}, length(k))
-  #softmax(alph, mapply(function(i) EV.L_ksay.k.r(k, i, util, eta.L, p, lastlvl=lastlvl, p.D), 0:numMarbles))
-  #softmax(alph, c(EV.L_ksay.k.r(k, 0:numMarbles, util, eta.L, p, lastlvl=lastlvl, p.D)))[ksay+1]
-}
-round(p.L_ksay.k.r.i(c(5,5,2,1, 0:8), c(5,9,8,2, 0:8), 1, 1, 7, 0.5, TRUE, 0.5), 5)
-
-round(p.L_ksay.k.r.i(2, 0:10, 1, 1, 7, 0.5, TRUE, 0.5), 5)
 
 p_t.ksay.r <- function(util, alph, eta.L, p, p.D) {
   P.K <- matrix(rep(p.k(0:numMarbles, p), each=numMarbles+1), nrow=numMarbles+1)
