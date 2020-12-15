@@ -15,7 +15,6 @@ humanLieCounts <- humanLie %>%
   pull(n) %>%
   matrix(nrow=121)
 
-unlist(list(matrix(c(5,4,1,2), nrow=2), c(1,2,3)))
 # 22 x 6 matrix
 humanDetectCounts <- humanDetect %>%
   count(expt, probabilityRed, reportedDrawn, callBS) %>%
@@ -34,7 +33,6 @@ noToM.s.predMat <- function(alph, eta.S){
   mapply(function(i, j){p.L_ksay.k.r(j, alph, eta.S, i, lastlvl=TRUE, rep(0.5,11))}, rep(c(0.2,0.5,0.8), 2), rep(c(1,-1), each=3))
 }
 
-colSums(noToM.s.predMat(1,6))
 
 # N = counts of k and k*
 # sum_ k sum_k*  log(p(k*|k))*N(k*|k)
@@ -132,7 +130,15 @@ noToM.r.eval(noToM.fit@coef['alph','Estimate'], noToM.fit@coef['eta.R','Estimate
 
 
 
-
+poissonAverage = function(input, lambda){
+  dims = dim(input)
+  d = length(dims)
+  ndepths = dims[d]
+  p.depth = dpois(0:(ndepths-1), lambda) / ppois(ndepths-1, lambda)
+  apply(input*array(rep(p.depth, each = prod(dims[-d])), dim = dims),
+        MARGIN = (1:(d-1)),
+        FUN = sum)
+}
 
 
 
@@ -148,6 +154,8 @@ recurseToM.matrix <- function(alph, eta.S, eta.R, util, p){
       store.bs.ksay[,depth] = prior
       store.bs.ksay.simple[,depth] = prior
     } else {
+      marginalized.caller = poissonAverage(store.ksay.k.simpe[,,1:(depth-1)], lambda)
+      
       store.bs.ksay.simple[,depth] = mapply(p.D_bs.ksay.r,
                                      0:10,
                                      p,
@@ -156,7 +164,7 @@ recurseToM.matrix <- function(alph, eta.S, eta.R, util, p){
                                      eta.R,
                                      lastlvl=FALSE,
                                      p_true.ksay(p.k(0:numMarbles, p),
-                                                 apply(store.ksay.k.simple[,,1:(depth-1)], MARGIN = c(1, 2), FUN = mean))) 
+                                                 marginalized.caller)) 
       store.bs.ksay[,depth] = mapply(p.D_bs.ksay.r,
                                      0:10,
                                      p,
@@ -165,21 +173,23 @@ recurseToM.matrix <- function(alph, eta.S, eta.R, util, p){
                                      eta.R,
                                      lastlvl=TRUE,
                                      p_true.ksay(p.k(0:numMarbles, p),
-                                                 apply(store.ksay.k.simple[,,1:(depth-1)], MARGIN = c(1, 2), FUN = mean))) #mean of previous levels; weigh?
+                                                 marginalized.caller)) #mean of previous levels; weigh?
       
     }
+    marginalized.liar = poissonAverage(matrix(store.bs.ksay.simple[,1:depth], nrow=numMarbles+1), lambda)
+    
     store.ksay.k.simple[,,depth] = p.L_ksay.k.r(util,
                                          alph,
                                          eta.S,
                                          p,
                                          lastlvl=FALSE,
-                                         apply(matrix(store.bs.ksay.simple[,1:depth], nrow=numMarbles+1), MARGIN = 1, FUN = mean))
+                                         marginalized.liar)
     store.ksay.k[,,depth] = p.L_ksay.k.r(util,
                                          alph,
                                          eta.S,
                                          p,
                                          lastlvl=TRUE,
-                                         apply(matrix(store.bs.ksay.simple[,1:depth], nrow=numMarbles+1), MARGIN = 1, FUN = mean))
+                                         marginalized.liar)
   }
   return(list(store.bs.ksay, store.ksay.k))
   # [[1]] receiver P(BS | k*)
