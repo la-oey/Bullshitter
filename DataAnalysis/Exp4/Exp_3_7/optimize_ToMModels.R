@@ -1,6 +1,6 @@
 setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/DataAnalysis/Exp4/Exp_3_7/")
 
-source("lying_modelFunctions_paramfitting.R")
+source("lying_modelFunctions_paramfitting_ed.R")
 library(tidyverse)
 bs.final <- read.csv("bsfinal_anon.csv")
 humanLie <- bs.final %>%
@@ -15,6 +15,7 @@ humanLieCounts <- humanLie %>%
   pull(n) %>%
   matrix(nrow=121)
 
+unlist(list(matrix(c(5,4,1,2), nrow=2), c(1,2,3)))
 # 22 x 6 matrix
 humanDetectCounts <- humanDetect %>%
   count(expt, probabilityRed, reportedDrawn, callBS) %>%
@@ -133,85 +134,134 @@ noToM.r.eval(noToM.fit@coef['alph','Estimate'], noToM.fit@coef['eta.R','Estimate
 
 
 
-mapply(p.D_bs.ksay.r,0:10, i, lastlvl=TRUE, iterate.L(d,i, rep(0.5,11)))
 
-recurseToM.s.depth <- function(alph, eta.S, depth){
-  mapply(
-    function(i, j){
-      p.L_ksay.k.r(j, alph, eta.S, i, lastlvl=TRUE, iterate.D(depth, j, alph, i, rep(0.5,11)))
-    }, 
-    rep(c(0.2,0.5,0.8), 2), 
-    rep(rep(c(1,-1), each=3))
-  )
+
+recurseToM.matrix <- function(alph, eta.S, eta.R, util, p){
+  n.depths = 25
+  prior = rep(0.5,11)
+  store.ksay.k = array(NA, dim = c(11, 11, n.depths))
+  store.ksay.k.simple = array(NA, dim = c(11, 11, n.depths))
+  store.bs.ksay = array(NA, dim = c(11, n.depths))
+  store.bs.ksay.simple = array(NA, dim = c(11, n.depths))
+  for(depth in 1:n.depths){
+    if(depth == 1){
+      store.bs.ksay[,depth] = prior
+      store.bs.ksay.simple[,depth] = prior
+    } else {
+      store.bs.ksay.simple[,depth] = mapply(p.D_bs.ksay.r,
+                                     0:10,
+                                     p,
+                                     util,
+                                     alph,
+                                     eta.R,
+                                     lastlvl=FALSE,
+                                     p_true.ksay(p.k(0:numMarbles, p),
+                                                 apply(store.ksay.k.simple[,,1:(depth-1)], MARGIN = c(1, 2), FUN = mean))) 
+      store.bs.ksay[,depth] = mapply(p.D_bs.ksay.r,
+                                     0:10,
+                                     p,
+                                     util,
+                                     alph,
+                                     eta.R,
+                                     lastlvl=TRUE,
+                                     p_true.ksay(p.k(0:numMarbles, p),
+                                                 apply(store.ksay.k.simple[,,1:(depth-1)], MARGIN = c(1, 2), FUN = mean))) #mean of previous levels; weigh?
+      
+    }
+    store.ksay.k.simple[,,depth] = p.L_ksay.k.r(util,
+                                         alph,
+                                         eta.S,
+                                         p,
+                                         lastlvl=FALSE,
+                                         apply(matrix(store.bs.ksay.simple[,1:depth], nrow=numMarbles+1), MARGIN = 1, FUN = mean))
+    store.ksay.k[,,depth] = p.L_ksay.k.r(util,
+                                         alph,
+                                         eta.S,
+                                         p,
+                                         lastlvl=TRUE,
+                                         apply(matrix(store.bs.ksay.simple[,1:depth], nrow=numMarbles+1), MARGIN = 1, FUN = mean))
+  }
+  return(list(store.bs.ksay, store.ksay.k))
+  # [[1]] receiver P(BS | k*)
+  # [[2]] sender P(k* | k)
+}
+iterate.D(1, 1, 1, 0.5, rep(0.5,11))
+recurseToM.matrix(1, 7, 6, 1, 0.5)[[1]]
+
+
+recurseToM.weighted <- function(alph, eta.S, eta.R, util, p, lambda){
+  matrices <- recurseToM.matrix(alph, eta.S, eta.R, util, p)
+  n.depths = dim(matrices[[1]])[2] # should be equal to dim(matrices[[2]])[3]
+  weightedR <- rowSums(matrices[[1]]*rep(dgeom(0:(n.depths-1), lambda), each=11))
+  weightedS <- apply(matrices[[2]]*rep(dgeom(0:(n.depths-1), lambda), each=11*11), MARGIN=c(1,2), FUN=sum)
+  return(list(weightedR, weightedS))
 }
 
-recurseToM.s.weighted <- function(alph, eta.S, lambda){
-  levels = 25 # -> 40
-  apply(
-    mapply(function(d){recurseToM.s.depth(alph, eta.S, d)*dgeom(d, lambda) / sum(dgeom(0:levels, lambda))}, 0:levels),
-    1, sum
-  )
+# recurseToM.weighted <- function(alph, eta.S, eta.R, util, p, lambda){
+#   matrices <- recurseToM.matrix(alph, eta.S, eta.R, util, p)
+#   n.depths = dim(matrices[[1]])[2] # should be equal to dim(matrices[[2]])[3]
+#   weightedR <- rowMeans(matrices[[1]])
+#   weightedS <- apply(matrices[[2]], MARGIN=c(1,2), FUN=mean)
+#   return(list(weightedR, weightedS))
+# }
+# recurseToM.weighted(1,7,6,1,0.5,0.1)
+
+
+recurseToM.conds <- function(alph, eta.S, eta.R, lambda){
+  #lambda = logitToProb(lambda)
+  n.depths = 25
+  store.ksay.k.full = array(NA, dim = c(11, 11, 6))
+  store.bs.ksay.full = array(NA, dim = c(11, 6))
+  utils = c(1,-1)
+  ps = c(0.2, 0.5, 0.8)
+  for(u in 1:length(utils)){
+    for(p in 1:length(ps)){
+      matr <- recurseToM.weighted(alph, eta.S, eta.R, utils[u], ps[p], lambda)
+      store.bs.ksay.full[,(u-1)*length(ps)+p] <- matr[[1]]
+      store.ksay.k.full[,,(u-1)*length(ps)+p] <- matr[[2]]
+    }
+  }
+  return(list(store.bs.ksay.full, store.ksay.k.full))
 }
 
-recurseToM.s.eval <- function(alph, eta.S, lambda, ns){ #ns = 121 x 6 matrix of counts for all conditions
-  sum(log(recurseToM.s.weighted(alph, eta.S, lambda))*ns)
+recurseToM.s.eval <- function(matr, ns){ #ns = 121 x 6 matrix of counts for all conditions
+  sum(log(matr)*ns)
 }
-recurseToM.s.eval(1,7,0.1, humanLieCounts)
+recurseToM.s.eval(recurseToM.conds(1, 7, 6, 0.1)[[2]], ns.l)
 
-recurseToM.s.LL <- function(alph, eta.S){
+
+recurseToM.r.eval <- function(matr, ns.T, ns.F){ #ns = 11 x 6 matrix of counts for all conditions
+  sum(log(matr)*ns.T + log(1-matr)*ns.F)
+}
+recurseToM.r.eval(recurseToM.conds(1, 7, 6, 0.1)[[1]],humanDetectCounts.T, humanDetectCounts.F)
+
+
+
+recurseToM.LL <- function(alph, eta.S, eta.R){
   lambda = 0.1
-  ns = humanLieCounts
-  neg.log.lik = -recurseToM.s.eval(alph, eta.S, lambda, ns)
-  neg.log.lik
-}
-
-recurseToM.s.fit <- summary(mle(recurseToM.s.LL,
-                        start=list(alph=rnorm(1, 1, 0.2),
-                                   eta.S=rnorm(1, 0, 1)),
-                        method = "BFGS"))
-recurseToM.s.fit
-
-
-
-
-
-
-recurseToM.r.depth <- function(alph, eta.R, depth){
-  mapply(
-    function(i, j){
-      mapply(p.D_bs.ksay.r,0:10, i, j, alph, eta.R, lastlvl=TRUE, iterate.L(depth,j, alph, i, rep(0.5,11)))
-    }, 
-    rep(c(0.2,0.5,0.8), 2), 
-    rep(rep(c(1,-1), each=3))
-  )
-}
-recurseToM.r.depth(1,7,1)
-
-recurseToM.r.weighted <- function(alph, eta.R, lambda){
-  levels = 5 # -> 40
-  apply(
-    mapply(function(d){recurseToM.r.depth(alph, eta.R, d)*dgeom(d, lambda) / sum(dgeom(0:levels, lambda))}, 0:levels),
-    1, sum
-  )
-}
-recurseToM.r.weighted(1,7,1)
-
-recurseToM.r.eval <- function(alph, eta.R, lambda, ns.T, ns.F){ #ns = 121 x 6 matrix of counts for all conditions
-  callBSmat = recurseToM.r.weighted(alph, eta.R, lambda)
-  sum(log(callBSmat)*ns.T + log(1-callBSmat)*ns.F)
-}
-recurseToM.r.eval(1,7,0.1, humanDetectCounts.T, humanDetectCounts.F)
-
-recurseToM.r.LL <- function(alph, eta.R){
-  lambda = 0.1
+  ns.l = array(humanLieCounts, dim=c(11,11,6))
   ns.T = humanDetectCounts.T
   ns.F = humanDetectCounts.F
-  neg.log.lik = -recurseToM.r.eval(alph, eta.R, lambda, ns.T, ns.F)
+  
+  recurseToM.mat <- recurseToM.conds(alph, eta.S, eta.R, lambda)
+  r.eval = -recurseToM.r.eval(recurseToM.mat[[1]], ns.T, ns.F)
+  s.eval = - recurseToM.s.eval(recurseToM.mat[[2]], ns.l)
+  print(paste("alph =", alph, "; lambda =", logitToProb(lambda), "; r =", r.eval, "; s =", s.eval))
+  neg.log.lik =  r.eval + s.eval
   neg.log.lik
 }
 
-recurseToM.r.fit <- summary(mle(recurseToM.r.LL,
+start_time <- Sys.time()
+recurseToM.fit <- summary(mle(recurseToM.LL,
                                 start=list(alph=rnorm(1, 1, 0.2),
+                                           eta.S=rnorm(1, 0, 1),
                                            eta.R=rnorm(1, 0, 1)),
                                 method = "BFGS"))
-recurseToM.r.fit
+Sys.time() - start_time
+recurseToM.fit25 <- recurseToM.fit
+recurseToM.fit40 <- recurseToM.fit
+
+
+recurseToM.r.fit6
+recurseToM.r.fit8
+recurseToM.r.fit10
