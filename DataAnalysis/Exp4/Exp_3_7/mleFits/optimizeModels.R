@@ -87,20 +87,21 @@ modelsEval = list(
   # # # # # # # # # # #
   recurseToM = function(){
     print("recursive ToM")
-    recurseToM.LL <- function(alph, eta.S, eta.R, lambda){
+    recurseToM.LL <- function(alph.S, alph.R, eta.S, eta.R, lambda){
       ns.l = array(humanLieCounts, dim=c(11,11,6))
       ns.T = humanDetectCounts.T
       ns.F = humanDetectCounts.F
 
-      recurseToM.mat <- recurseToM.pred(alph, eta.S, eta.R, lambda)
+      recurseToM.mat <- recurseToM.pred(alph.S, alph.R, eta.S, eta.R, lambda)
       r.eval = -eval.r(recurseToM.mat[[1]], ns.T, ns.F)
       s.eval = -eval.s(recurseToM.mat[[2]], ns.l)
-      # print(paste("alph =", alph, "; lambda =", lambda, "; r =", r.eval, "; s =", s.eval))
+      print(paste("alph.S =", alph.S, "alph.R =", alph.R, "; lambda =", lambda, "; r =", r.eval, "; s =", s.eval))
       neg.log.lik =  r.eval + s.eval
       neg.log.lik
     }
     recurseToM.fit <- summary(mle(recurseToM.LL,
-                                  start=list(alph=rnorm(1, 1, 0.2),
+                                  start=list(alph.S=rnorm(1, 1, 0.2),
+                                             alph.R=rnorm(1, 1, 0.2),
                                              eta.S=rnorm(1, 0, 1),
                                              eta.R=rnorm(1, 0, 1),
                                              lambda=rnorm(1, 0, 1)),
@@ -244,14 +245,13 @@ modelsEval = list(
 start_time <- Sys.time()
 noToMeval = modelsEval$noToM()
 print(Sys.time() - start_time)
--2*eval.s(
+noToMeval.s <- -2*eval.s(
   noToM.s.pred(
     noToMeval@coef['alph','Estimate'], 
     noToMeval@coef['eta.S','Estimate']), 
   humanLieCounts
 )
-
--2*eval.r(
+noToMeval.r <- -2*eval.r(
   noToM.r.pred(
     noToMeval@coef['alph','Estimate'], 
     noToMeval@coef['eta.R','Estimate']), 
@@ -260,11 +260,15 @@ print(Sys.time() - start_time)
 )
 
 
+
+
+
+
+
 # recursive ToM
-start_time <- Sys.time()
-recurseToMeval = modelsEval$recurseToM()
-print(Sys.time() - start_time)
--2*eval.s(
+load("recurseToMfit.Rdata")
+recurseToMeval = recurseToM.fit
+recurseToMeval.s <- -2*eval.s(
   recurseToM.pred(
     recurseToMeval@coef['alph','Estimate'],
     recurseToMeval@coef['eta.S','Estimate'],
@@ -272,12 +276,34 @@ print(Sys.time() - start_time)
     recurseToMeval@coef['lambda','Estimate'])[[2]],
   array(humanLieCounts, dim=c(11,11,6))
 )
--2*eval.r(
+recurseToMeval.r <- -2*eval.r(
   recurseToM.pred(
     recurseToMeval@coef['alph','Estimate'],
     recurseToMeval@coef['eta.S','Estimate'],
     recurseToMeval@coef['eta.R','Estimate'],
     recurseToMeval@coef['lambda','Estimate'])[[1]],
+  humanDetectCounts.T, 
+  humanDetectCounts.F
+)
+
+# recursive ToM (2 alphas)
+load("recurseToMfit_alphas.Rdata")
+recurseToMeval2.s <- -2*eval.s(
+  recurseToM.pred(
+    recurseToMeval2@coef['alph.S','Estimate'],
+    recurseToMeval2@coef['alph.R','Estimate'],
+    recurseToMeval2@coef['eta.S','Estimate'],
+    recurseToMeval2@coef['eta.R','Estimate'],
+    recurseToMeval2@coef['lambda','Estimate'])[[2]],
+  array(humanLieCounts, dim=c(11,11,6))
+)
+recurseToMeval2.r <- -2*eval.r(
+  recurseToM.pred(
+    recurseToMeval2@coef['alph.S','Estimate'],
+    recurseToMeval2@coef['alph.R','Estimate'],
+    recurseToMeval2@coef['eta.S','Estimate'],
+    recurseToMeval2@coef['eta.R','Estimate'],
+    recurseToMeval2@coef['lambda','Estimate'])[[1]],
   humanDetectCounts.T, 
   humanDetectCounts.F
 )
