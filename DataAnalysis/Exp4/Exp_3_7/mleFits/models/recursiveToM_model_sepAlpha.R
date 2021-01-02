@@ -1,7 +1,6 @@
 setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/DataAnalysis/Exp4/Exp_3_7/mleFits")
 
 source("ToMModelFunctions.R")
-source("recursiveToM_model.R")
 
 
 
@@ -18,7 +17,7 @@ recurseToM.matrix2 <- function(alph.S, alph.R, eta.S, eta.R, util, p, lambda){
       store.bs.ksay.simple[,depth] = prior
     } else {
       marginalized.caller = poissonAverage(store.ksay.k.simple[,,1:(depth-1)], lambda)
-      
+
       store.bs.ksay.simple[,depth] = mapply(p.D_bs.ksay.r,
                                             0:10,
                                             p,
@@ -27,7 +26,7 @@ recurseToM.matrix2 <- function(alph.S, alph.R, eta.S, eta.R, util, p, lambda){
                                             eta.R,
                                             lastlvl=FALSE,
                                             p_true.ksay(p.k(0:numMarbles, p),
-                                                        marginalized.caller)) 
+                                                        marginalized.caller))
       store.bs.ksay[,depth] = mapply(p.D_bs.ksay.r,
                                      0:10,
                                      p,
@@ -37,10 +36,10 @@ recurseToM.matrix2 <- function(alph.S, alph.R, eta.S, eta.R, util, p, lambda){
                                      lastlvl=TRUE,
                                      p_true.ksay(p.k(0:numMarbles, p),
                                                  marginalized.caller)) #mean of previous levels; weigh?
-      
+
     }
     marginalized.liar = poissonAverage(matrix(store.bs.ksay.simple[,1:depth], nrow=numMarbles+1), lambda)
-    
+
     store.ksay.k.simple[,,depth] = p.L_ksay.k.r(util,
                                                 alph.S,
                                                 eta.S,
@@ -60,7 +59,7 @@ recurseToM.matrix2 <- function(alph.S, alph.R, eta.S, eta.R, util, p, lambda){
 }
 
 recurseToM.weighted2 <- function(alph.S, alph.R, eta.S, eta.R, util, p, lambda){
-  matrices <- recurseToM.matrix(alph.S, alph.R, eta.S, eta.R, util, p, lambda)
+  matrices <- recurseToM.matrix2(alph.S, alph.R, eta.S, eta.R, util, p, lambda)
   n.depths = dim(matrices[[1]])[2] # should be equal to dim(matrices[[2]])[3]
   weightedR <- poissonAverage(matrices[[1]], lambda)
   weightedS <- poissonAverage(matrices[[2]], lambda)
@@ -75,7 +74,7 @@ recurseToM.pred2 <- function(alph.S, alph.R, eta.S, eta.R, lambda){
   ps = c(0.2, 0.5, 0.8)
   for(u in 1:length(utils)){
     for(p in 1:length(ps)){
-      matr <- recurseToM.weighted(alph.S, alph.R, eta.S, eta.R, utils[u], ps[p], lambda)
+      matr <- recurseToM.weighted2(alph.S, alph.R, eta.S, eta.R, utils[u], ps[p], lambda)
       store.bs.ksay.full[,(u-1)*length(ps)+p] <- matr[[1]]
       store.ksay.k.full[,,(u-1)*length(ps)+p] <- matr[[2]]
     }

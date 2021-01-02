@@ -286,10 +286,43 @@ recurseToMeval.r <- -2*eval.r(
   humanDetectCounts.F
 )
 
+
+
+# recursive ToM broken down by condition
+
+preds <- recurseToM.pred(
+  recurseToMeval@coef['alph','Estimate'],
+  recurseToMeval@coef['eta.S','Estimate'],
+  recurseToMeval@coef['eta.R','Estimate'],
+  recurseToMeval@coef['lambda','Estimate'])
+predsS <- preds[[2]]
+trueS <- array(humanLieCounts, dim=c(11,11,6))
+predsR <- preds[[1]]
+for(i in 1:6){
+  print(
+    -2*eval.s(
+      predsS[,,i],
+      trueS[,,i]
+    )
+  )
+}
+for(i in 1:6){
+  print(
+    -2*eval.r(
+      predsR[,i],
+      humanDetectCounts.T[,i], 
+      humanDetectCounts.F[,i]
+    )
+  )
+}
+
+
+
+
 # recursive ToM (2 alphas)
 load("recurseToMfit_alphas.Rdata")
 recurseToMeval2.s <- -2*eval.s(
-  recurseToM.pred(
+  recurseToM.pred2(
     recurseToMeval2@coef['alph.S','Estimate'],
     recurseToMeval2@coef['alph.R','Estimate'],
     recurseToMeval2@coef['eta.S','Estimate'],
@@ -298,7 +331,7 @@ recurseToMeval2.s <- -2*eval.s(
   array(humanLieCounts, dim=c(11,11,6))
 )
 recurseToMeval2.r <- -2*eval.r(
-  recurseToM.pred(
+  recurseToM.pred2(
     recurseToMeval2@coef['alph.S','Estimate'],
     recurseToMeval2@coef['alph.R','Estimate'],
     recurseToMeval2@coef['eta.S','Estimate'],
@@ -307,6 +340,34 @@ recurseToMeval2.r <- -2*eval.r(
   humanDetectCounts.T, 
   humanDetectCounts.F
 )
+
+preds2 <- recurseToM.pred2(
+  recurseToMeval2@coef['alph.S','Estimate'],
+  recurseToMeval2@coef['alph.R','Estimate'],
+  recurseToMeval2@coef['eta.S','Estimate'],
+  recurseToMeval2@coef['eta.R','Estimate'],
+  recurseToMeval2@coef['lambda','Estimate'])
+predsS2 <- preds2[[2]]
+predsR2 <- preds2[[1]]
+for(i in 1:6){
+  print(
+    -2*eval.s(
+      predsS2[,,i],
+      trueS[,,i]
+    )
+  )
+}
+for(i in 1:6){
+  print(
+    -2*eval.r(
+      predsR2[,i],
+      humanDetectCounts.T[,i], 
+      humanDetectCounts.F[,i]
+    )
+  )
+}
+
+
 
 
 # everybody lies
