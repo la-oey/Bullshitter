@@ -1,9 +1,9 @@
 
 
-alwaysLie.func <- function(util){
+alwaysLie.func <- function(expt){
   case_when(
-    util == 1 ~ rep(c(rep(0.0001,10),1-0.0001*10),11),
-    util == -1 ~ rep(c(1-0.0001*10,rep(0.0001,10)),11)
+    expt$utilSign == 1 ~ rep(c(rep(0.0001,10),1-0.0001*10),11),
+    expt$utilSign == -1 ~ rep(c(1-0.0001*10,rep(0.0001,10)),11)
   )
 }
 

@@ -1,6 +1,6 @@
 require(tidyverse)
 
-bs.final <- read.csv("bsfinal_anon.csv")
+bs.final <- read.csv(here::here('model', 'fitting', 'data', 'bsfinal_anon.csv'))
 humanLie <- bs.final %>%
   filter(roleCurrent == "bullshitter")
 humanDetect <- bs.final %>%

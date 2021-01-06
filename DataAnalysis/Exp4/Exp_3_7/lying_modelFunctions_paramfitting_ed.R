@@ -24,6 +24,7 @@ p.k <- function(k, p) {
 
 
 
+
 # util = [-1, +1] "pts for red" = +1, "pts for blue" = -1
 
 u.L <- function(ksay, lie, BS, utilStr, eta.L, lastLvl=FALSE) {
