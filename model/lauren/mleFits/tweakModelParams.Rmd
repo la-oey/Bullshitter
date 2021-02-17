@@ -1,0 +1,323 @@
+---
+title: "Tweak Model Parameters"
+author: "Lauren Oey"
+date: "2/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+models.sources = paste0("models/",list.files("models/"))
+sapply(models.sources, source)
+load("recurseToMfit.Rdata")
+
+origModelPred <- recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+
+humanLieCounts <- humanLie %>%
+  count(expt, probabilityRed, drawnRed, reportedDrawn) %>%
+  complete(expt=c("expt4","expt5"), probabilityRed=c(0.2,0.5,0.8), drawnRed=0:10, reportedDrawn=0:10, fill = list(n = 0)) %>%
+  pull(n) %>%
+  matrix(nrow=121)
+```
+
+
+```{r include=FALSE hiddenFunctions}
+eval.s <- function(matr, ns){ #ns = 121 x 6 matrix of counts for all conditions
+  sum(log(matr)*ns)
+}
+
+getDiag <- function(arr){
+  apply(arr, MARGIN=3, FUN=diag)
+}
+
+select_all_but_diag <- function(x) {
+  matrix(x[lower.tri(x, diag = F) | upper.tri(x, diag = F)], 
+         nrow = nrow(x) - 1, 
+         ncol = ncol(x))
+}
+getLies <- function(arr){
+  apply(arr, MARGIN=3, FUN=select_all_but_diag)
+}
+```
+
+# Original Recursive ToM Model Fits
+
+```{r}
+recurseToMeval
+```
+
+## Function to Generate Lying Graphs
+
+```{r}
+genLieFig <- function(modelPredsMat){
+  recurse.S.pred.df <- modelPredsMat %>% 
+    as_tibble() %>% 
+    mutate(ksay = 0:10) %>% 
+    pivot_longer(-ksay, names_to = 'k', values_to='probability') %>% 
+    mutate(k = as.numeric(substr(k, 2, 10))-1,
+           expt = ifelse(k < ceiling(max(k)/2), "red", "blue"),
+           expt = factor(expt, levels=c("red","blue"))) %>%
+    relocate(k, .before = ksay) %>%
+    arrange(k, ksay) %>%
+    mutate(p = rep(rep(c(0.2, 0.5, 0.8), each=121),2),
+           p = as.factor(p),
+           k = k %% 11) %>%
+    relocate(c(expt,p), .before = k) %>%
+    arrange(expt, p, k, ksay)
+  recurse.S.pred.df %>%
+    mutate(probTxt = paste0(round(probability*100),"%")) %>%
+    ggplot(aes(x=k, y=ksay, fill=probability, label=probTxt)) +
+    geom_tile() +
+    geom_text(size=2) +
+    scale_x_continuous(expand=c(0,0)) +
+    scale_y_continuous(expand=c(0,0)) +
+    scale_fill_gradient2(low="white", mid="darkorchid", high="blue", midpoint=0.5, limits=c(0,1)) +
+    facet_grid(expt ~ p)
+}
+```
+
+# Figure Predictions
+
+## Original Model Fit
+
+```{r}
+genLieFig(origModelPred) +
+  ggtitle("Recursive ToM Prediction k* | k")
+```
+
+
+
+# Manipulate $\alpha$
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    0.08,
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("alpha = 0.08")
+```
+
+
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    0.2,
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("alpha = 0.2")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    0.5,
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("alpha = 0.5")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    1,
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("alpha = 1")
+```
+
+
+
+
+# Manipulate $\eta_S$
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    0,
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("eta.S = 0")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    5,
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("eta.S = 5")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    15,
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("eta.S = 15")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    20,
+    recurseToMeval@coef['eta.R','Estimate'],
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("eta.S = 20")
+```
+
+# Manipulate $\lambda$
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    log(1))[[2]]
+) +
+  ggtitle("lambda = log(1) --- level 1")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    log(2))[[2]]
+) +
+  ggtitle("lambda = log(2) --- level 2")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    log(3))[[2]]
+) +
+  ggtitle("lambda = log(3) --- level 3")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    log(4))[[2]]
+) +
+  ggtitle("lambda = log(4) --- level 4")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    log(10))[[2]]
+) +
+  ggtitle("lambda = log(10) --- level 10")
+```
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    recurseToMeval@coef['eta.R','Estimate'],
+    log(15))[[2]]
+) +
+  ggtitle("lambda = log(15) --- level 15")
+```
+
+
+# Play with $\alpha$ and $\eta_S$
+```{r}
+ALPH = 0.1
+ETA = 0
+
+modelPreds = recurseToM.pred(
+  ALPH,
+  ETA,
+  recurseToMeval@coef['eta.R','Estimate'],
+  recurseToMeval@coef['lambda','Estimate'])[[2]]
+
+genLieFig(
+  modelPreds
+) +
+  ggtitle("alpha = 0.25; eta_S = 5")
+
+recurseToMeval.s.all <- -2*eval.s(
+  modelPreds,
+  array(humanLieCounts, dim=c(11,11,6))
+)
+
+recurseToMeval.s.diag = -2*eval.s(
+  getDiag(
+    modelPreds
+  ),
+  getDiag(
+    array(
+      humanLieCounts, 
+      dim=c(11,11,6))
+  )
+)
+recurseToMeval.s.lies = -2*eval.s(
+  getLies(
+    modelPreds
+  ),
+  getLies(
+    array(
+      humanLieCounts, 
+      dim=c(11,11,6))
+  )
+)
+
+print(paste0("overall model fit: ", recurseToMeval.s.all))
+print(paste0("truth model fit: ", recurseToMeval.s.diag))
+print(paste0("lies model fit: ", recurseToMeval.s.lies))
+```
+
+
+
+
+
+
+# $\eta_R$ makes no impact on sender predictions
+
+```{r}
+genLieFig(
+  recurseToM.pred(
+    recurseToMeval@coef['alph','Estimate'],
+    recurseToMeval@coef['eta.S','Estimate'],
+    0,
+    recurseToMeval@coef['lambda','Estimate'])[[2]]
+) +
+  ggtitle("eta.R = 0")
+```

@@ -1,4 +1,4 @@
-setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/DataAnalysis/Exp4/Exp_3_7/mleFits")
+setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/model/lauren/mleFits")
 
 source("ToMModelFunctions.R")
 library(tidyverse)

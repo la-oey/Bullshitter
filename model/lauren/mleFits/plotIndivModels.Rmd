@@ -1,0 +1,316 @@
+---
+title: "Model Predictions"
+author: "Lauren Oey"
+date: "2/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+source("optimizeModels.R")
+expt = read_csv("bsfinal_anon.csv") %>%
+  mutate(roleCurrent = ifelse(roleCurrent=="bullshitter", "sender", "receiver")) %>%
+  rename(p = probabilityRed, k = drawnRed, ksay = reportedDrawn) %>%
+  mutate(expt = factor(ifelse(expt=="expt4", "red", "blue"), levels=c("red","blue")),
+         p = as.factor(p))
+load("recurseToMfit.Rdata")
+
+my_red = c("#ffd5d6","#fc7f81","#fd2428")
+```
+# Experimental Results
+
+```{r include=FALSE}
+expt.S.full <- expt %>%
+  filter(roleCurrent == "sender")
+
+expt.S <- expt.S.full %>%
+  group_by(expt, p, k, ksay) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  complete(expt, p, k, ksay, fill=list(n=0)) %>%
+  group_by(expt, p, k) %>%
+  mutate(prob = n / sum(n),
+         probTxt = paste0(round(prob*100), "%"))
+
+expt.R.full <- expt %>%
+  filter(roleCurrent == "receiver")
+
+expt.R <- expt.R.full %>%
+  group_by(expt, p, ksay, callBS) %>%
+  summarise(n = n()) %>%
+  ungroup() %>%
+  complete(expt, p, ksay, callBS, fill=list(n=0)) %>%
+  group_by(expt, p, ksay) %>%
+  mutate(propBS = n / sum(n))
+```
+
+# Recursive ToM 
+
+## Sender
+
+```{r include=FALSE}
+recurse.S.pred <- recurseToM.pred(
+  recurseToMeval@coef['alph','Estimate'],
+  recurseToMeval@coef['eta.S','Estimate'],
+  recurseToMeval@coef['eta.R','Estimate'],
+  recurseToMeval@coef['lambda','Estimate'])[[2]]
+
+recurse.S.pred.df <- recurse.S.pred %>% 
+  as_tibble() %>% 
+  mutate(ksay = 0:10) %>% 
+  pivot_longer(-ksay, names_to = 'k', values_to='probability') %>% 
+  mutate(k = as.numeric(substr(k, 2, 10))-1,
+         expt = ifelse(k < ceiling(max(k)/2), "red", "blue"),
+         expt = factor(expt, levels=c("red","blue"))) %>%
+  relocate(k, .before = ksay) %>%
+  arrange(k, ksay) %>%
+  mutate(p = rep(rep(c(0.2, 0.5, 0.8), each=121),2),
+         p = as.factor(p),
+         k = k %% 11) %>%
+  relocate(c(expt,p), .before = k) %>%
+  arrange(expt, p, k, ksay)
+```
+
+P(k* | k)
+```{r}
+expt.S %>%
+  ggplot(aes(x=k, y=ksay, fill=n, label=n)) +
+  geom_tile() +
+  geom_text(size=2) +
+  ggtitle("Expt k* Counts") +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  #scale_fill_continuous(low="white", high="darkorchid") +
+  scale_fill_gradient2(low="white", mid="darkorchid", high="blue", midpoint=200) +
+  facet_grid(expt ~ p)
+ggsave("img/imgModels/expt_ksay.png", width=8, height=5)
+
+expt.S %>%
+  ggplot(aes(x=k, y=ksay, fill=prob, label=probTxt)) +
+  geom_tile() +
+  geom_text(size=2) +
+  ggtitle("Expt k* | k") +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_gradient2(low="white", mid="darkorchid", high="blue", midpoint=0.5) +
+  facet_grid(expt ~ p)
+ggsave("img/imgModels/expt_p.ksay.k.png", width=8, height=5)
+```
+
+```{r}
+recurse.S.pred.df %>%
+  mutate(probTxt = paste0(round(probability*100),"%")) %>%
+  ggplot(aes(x=k, y=ksay, fill=probability, label=probTxt)) +
+  geom_tile() +
+  geom_text(size=2) +
+  ggtitle("Recursive ToM Prediction k* | k") +
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_gradient2(low="white", mid="darkorchid", high="blue", midpoint=0.5) +
+  facet_grid(expt ~ p)
+ggsave("img/imgModels/recurseToM_p.ksay.k.png", width=8, height=5)
+```
+
+P(truth | k)
+
+solid line shows ideal model prediction
+```{r}
+expt.S.full %>%
+  mutate(truth = as.numeric(k == ksay)) %>%
+  ggplot(aes(x=k, y=truth, colour=p, fill=p)) +
+  stat_summary(shape=21, colour="black", geom="pointrange", position="jitter") + 
+  #stat_summary(geom="line") + 
+  geom_smooth(method="glm", se=F) +
+  geom_smooth(method="glm", se=F, colour="black", linetype=2) +
+  geom_line(data=filter(recurse.S.pred.df, k==ksay), 
+            aes(x=k, y=probability, colour=p),
+            size=1) +
+  scale_y_continuous("Proportion of Truth", limits=c(0,1)) +
+  scale_colour_manual(values=my_red) +
+  scale_fill_manual(values=my_red) +
+  facet_grid(~expt) +
+  theme_minimal()
+```
+
+```{r include=F}
+recurse.S.pred.df %>%
+  filter(k == ksay) %>%
+  ggplot(aes(x=k, y=probability, colour=p)) +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_colour_manual(values=my_red) +
+  facet_grid(~expt) +
+  theme_minimal()
+```
+
+P(ksay | lie)
+```{r}
+lms <- data.frame()
+for(e in unique(expt.S.full$expt)){
+  for(prob in unique(expt.S.full$p)){
+    temp <- filter(expt.S.full, k != ksay & e==expt & prob==p) %>%
+      mutate(k = k - 5)
+    summ <- summary(lmer(ksay ~ k + (1 | subjID), data=temp))
+    lms <- bind_rows(lms, 
+                     data.frame(
+                       expt = e,
+                       p = prob,
+                       b0.est = summ$coefficients["(Intercept)","Estimate"],
+                       b0.se = summ$coefficients["(Intercept)","Std. Error"],
+                       b1.est = summ$coefficients["k","Estimate"],
+                       b1.se = summ$coefficients["k","Std. Error"]
+                     ))
+  }
+}
+lms <- lms %>%
+  mutate(b0 = format(round(b0.est,2), nsmall = 2),
+         b1 = format(round(b1.est,2), nsmall = 2),
+         lm = paste0(b0, " + ", b1, "x"))
+
+
+expt.S.full %>%
+  filter(k != ksay) %>%
+  ggplot() +
+  geom_jitter(aes(x=k, y=ksay), colour="gray60", size=0.5, alpha=0.8) +
+  stat_summary(aes(x=k, y=ksay), colour="darkviolet", shape=21) +
+  geom_smooth(aes(x=k, y=ksay), method="lm", se=F, colour="black") +
+  geom_text(data=lms, aes(label=lm), x=0, y=9, hjust=0) +
+  facet_grid(expt ~ p) +
+  theme_bw()
+```
+
+```{r}
+recurse.S.pred.df %>%
+  filter(k != ksay) %>%
+  group_by(expt, p, k) %>%
+  mutate(weight = probability/sum(probability)) %>%
+  summarise(mean.ksay = sum(weight*ksay)) %>%
+  ggplot(aes(x=k, y=mean.ksay)) +
+  geom_point(colour="purple") +
+  geom_line() +
+  scale_y_continuous(limits=c(0,10)) +
+  facet_grid(expt ~ p) +
+  theme_minimal()
+```
+
+Experiment
+
+```{r}
+expt.S %>%
+  filter(expt=="red") %>%
+  mutate(truth = k == ksay) %>%
+  ggplot(aes(x=ksay, y=prob, fill=truth)) +
+  geom_bar(stat="identity") +
+  ggtitle("Expt Player Gets Points for Red") +
+  scale_y_continuous(breaks=seq(0,1,0.5), labels=c("0","0.5","1")) +
+  scale_fill_manual(values=c("red","forestgreen")) +
+  guides(fill = F) +
+  coord_flip() +
+  facet_grid(p ~ k) +
+  theme_bw()
+```
+
+```{r echo=FALSE}
+expt.S %>%
+  filter(expt=="blue") %>%
+  mutate(truth = k == ksay) %>%
+  ggplot(aes(x=ksay, y=prob, fill=truth)) +
+  geom_bar(stat="identity") +
+  ggtitle("Expt Player Gets Points for Blue") +
+  scale_y_continuous(breaks=seq(0,1,0.5), labels=c("0","0.5","1")) +
+  scale_fill_manual(values=c("red","forestgreen")) +
+  guides(fill = F) +
+  coord_flip() +
+  facet_grid(p ~ k) +
+  theme_bw()
+```
+
+Ideal Model
+
+```{r echo=FALSE}
+recurse.S.pred.df %>%
+  filter(expt=="red") %>%
+  mutate(truth = k == ksay) %>%
+  ggplot(aes(x=ksay, y=probability, fill=truth)) +
+  geom_bar(stat="identity") +
+  ggtitle("Recursive ToM Player Gets Points for Red") +
+  scale_y_continuous(breaks=seq(0,1,0.5), labels=c("0","0.5","1")) +
+  scale_fill_manual(values=c("red","forestgreen")) +
+  guides(fill = F) +
+  coord_flip() +
+  facet_grid(p ~ k) +
+  theme_bw()
+```
+
+```{r echo=FALSE}
+recurse.S.pred.df %>%
+  filter(expt=="blue") %>%
+  mutate(truth = k == ksay) %>%
+  ggplot(aes(x=ksay, y=probability, fill=truth)) +
+  geom_bar(stat="identity") +
+  ggtitle("Recursive ToM Player Gets Points for Blue") +
+  scale_y_continuous(breaks=seq(0,1,0.5), labels=c("0","0.5","1")) +
+  scale_fill_manual(values=c("red","forestgreen")) +
+  guides(fill = F) +
+  coord_flip() +
+  facet_grid(p ~ k) +
+  theme_bw()
+```
+
+
+
+## Receiver
+
+```{r include=FALSE}
+recurse.R.pred <- recurseToM.pred(
+  recurseToMeval@coef['alph','Estimate'],
+  recurseToMeval@coef['eta.S','Estimate'],
+  recurseToMeval@coef['eta.R','Estimate'],
+  recurseToMeval@coef['lambda','Estimate'])[[1]]
+
+
+recurse.R.pred.df <- recurse.R.pred %>%
+  as_tibble() %>% 
+  mutate(ksay = 0:10) %>% 
+  pivot_longer(-ksay, names_to = 'condition', values_to='probability') %>% 
+  mutate(condition = as.numeric(substr(condition, 2, 10))-1,
+         expt = ifelse(condition < ceiling(max(condition)/2), "red", "blue"),
+         expt = factor(expt, levels=c("red","blue"))) %>%
+  mutate(p = rep(c(0.2, 0.5, 0.8), 22),
+         p = as.factor(p)) %>%
+  select(-condition) %>%
+  relocate(c(expt,p), .before = ksay) %>%
+  arrange(expt, p, ksay)
+```
+
+P(BS | k*)
+
+```{r}
+expt.R.full %>%
+  mutate(callBS = as.numeric(callBS)) %>%
+  ggplot(aes(x=ksay, y=callBS, colour=p)) +
+  stat_summary() +
+  geom_smooth(method = "lm", formula = y ~ x + I(x^2), se=F) +
+  #geom_smooth(method = "loess", se=F) +
+  scale_colour_manual(values = my_red) +
+  facet_wrap(~expt) +
+  theme_minimal()
+```
+
+```{r}
+recurse.R.pred.df %>%
+  ggplot(aes(x=ksay, y=probability, colour=p)) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=my_red) +
+  facet_wrap(~expt) +
+  theme_minimal()
+```
+
+
+
+
+
