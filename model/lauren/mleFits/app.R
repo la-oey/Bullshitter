@@ -148,7 +148,7 @@ server <- function(input, output) {
   output$recurseToMTxt <- renderText({
     trueFit = paste("&emsp;&emsp;&emsp; truth model deviance:", round(origModel.diag))
     liesFit = paste("&emsp;&emsp;&emsp; lies model deviance: ", round(origModel.lies))
-    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(eval[[1]] + eval[[2]]))
+    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(origModel.diag + origModel.lies))
     paste(trueFit, liesFit, totalFit, sep="<br/>")
   })
   
@@ -170,7 +170,7 @@ server <- function(input, output) {
   output$someLiesTxt <- renderText({
     trueFit = paste("&emsp;&emsp;&emsp; truth model deviance:", round(somePeopleLie.diag))
     liesFit = paste("&emsp;&emsp;&emsp; lies model deviance: ", round(somePeopleLie.lies))
-    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(eval[[1]] + eval[[2]]))
+    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(somePeopleLie.diag + somePeopleLie.lies))
     paste(trueFit, liesFit, totalFit, sep="<br/>")
   })
   
