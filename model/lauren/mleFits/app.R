@@ -110,9 +110,10 @@ server <- function(input, output) {
   # Pull in description of trend
   output$evalTxt <- renderText({
     eval = eval()
-    trueFit = paste("&emsp;&emsp;&emsp; truth model deviance:", round(eval[[1]]))
-    liesFit = paste("&emsp;&emsp;&emsp; lies model deviance: ", round(eval[[2]]))
-    paste(paste(trueFit, liesFit, sep="<br/>"),"<br/><br/><br/>")
+    trueFit = paste("&emsp;&emsp;&emsp; truth (diagonal) model deviance:", round(eval[[1]]))
+    liesFit = paste("&emsp;&emsp;&emsp; lies (non-diagonal) model deviance: ", round(eval[[2]]))
+    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(eval[[1]] + eval[[2]]))
+    paste(paste(trueFit, liesFit, totalFit, sep="<br/>"),"<br/><br/><br/>")
   })
   
   
@@ -147,7 +148,8 @@ server <- function(input, output) {
   output$recurseToMTxt <- renderText({
     trueFit = paste("&emsp;&emsp;&emsp; truth model deviance:", round(origModel.diag))
     liesFit = paste("&emsp;&emsp;&emsp; lies model deviance: ", round(origModel.lies))
-    paste(trueFit, liesFit, sep="<br/>")
+    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(eval[[1]] + eval[[2]]))
+    paste(trueFit, liesFit, totalFit, sep="<br/>")
   })
   
   
@@ -168,7 +170,8 @@ server <- function(input, output) {
   output$someLiesTxt <- renderText({
     trueFit = paste("&emsp;&emsp;&emsp; truth model deviance:", round(somePeopleLie.diag))
     liesFit = paste("&emsp;&emsp;&emsp; lies model deviance: ", round(somePeopleLie.lies))
-    paste(trueFit, liesFit, sep="<br/>")
+    totalFit = paste("&emsp;&emsp;&emsp; total model deviance: ", round(eval[[1]] + eval[[2]]))
+    paste(trueFit, liesFit, totalFit, sep="<br/>")
   })
   
 
