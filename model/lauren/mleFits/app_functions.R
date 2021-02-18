@@ -5,7 +5,9 @@ source("models/recursiveToM_model.R")
 source("models/somePeopleLie_model.R")
 
 
-
+bs.final <- read.csv("bsfinal_anon.csv")
+humanLie <- bs.final %>%
+  filter(roleCurrent == "bullshitter")
 humanLieCounts <- humanLie %>%
   count(expt, probabilityRed, drawnRed, reportedDrawn) %>%
   complete(expt=c("expt4","expt5"), probabilityRed=c(0.2,0.5,0.8), drawnRed=0:10, reportedDrawn=0:10, fill = list(n = 0)) %>%
@@ -15,6 +17,13 @@ humanLieCounts <- humanLie %>%
 
 
 # Functions
+logitToProb <- function(logit){
+  exp(logit) / (1+exp(logit))
+}
+
+probToLogit <- function(prob){
+  log(prob / (1 - prob))
+}
 
 eval.s <- function(matr, ns){ #ns = 121 x 6 matrix of counts for all conditions
   sum(log(matr)*ns)
