@@ -128,13 +128,13 @@ for(depth in 1:n.depths){
                                        #store.bs.ksay[,depth])
 }
 
-store.ksay.k[,,18] %>% as_tibble() %>% 
-  mutate(idx = 0:10) %>% 
-  pivot_longer(-idx, names_to = 'column', values_to='probability') %>% 
-  mutate(column = as.numeric(substr(column, 2, 10))-1) %>% 
-  ggplot(aes(x=column, y=idx, fill=probability))+
-  geom_tile()+
-  xlab('k')+ylab('ksay')
-
-plot(store.bs.ksay[,35])
+# store.ksay.k[,,18] %>% as_tibble() %>% 
+#   mutate(idx = 0:10) %>% 
+#   pivot_longer(-idx, names_to = 'column', values_to='probability') %>% 
+#   mutate(column = as.numeric(substr(column, 2, 10))-1) %>% 
+#   ggplot(aes(x=column, y=idx, fill=probability))+
+#   geom_tile()+
+#   xlab('k')+ylab('ksay')
+# 
+# plot(store.bs.ksay[,35])
 

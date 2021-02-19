@@ -78,20 +78,24 @@ modelsEval = list(
   # # # # # # # #
   noToM = function(){
     print("no ToM")
-    noToM.LL <- function(alph, eta.S, eta.R){
+    noToM.LL <- function(alph, eta.S, eta.R, weight){
       ns.l = humanLieCounts
       ns.T = humanDetectCounts.T
       ns.F = humanDetectCounts.F
-      noToM.mat <- list(noToM.s.pred(alph, eta.S), noToM.r.pred(alph, eta.R))
-
-      print(paste("alph =", alph, "; eta.S =", eta.S, "; s =", neg.log.lik))
-      neg.log.lik = -eval.s(noToM.mat[[1]], ns.l) - eval.r(noToM.mat[[2]], ns.T, ns.F)
-      neg.log.lik
+      noToM.mat <- list(noToM.s.pred(alph, eta.S, weight), noToM.r.pred(alph, eta.R))
+  
+      s.eval = -eval.s(noToM.mat[[1]], ns.l)
+      r.eval = -eval.r(noToM.mat[[2]], ns.T, ns.F)
+      print(paste("alph =", alph, "; eta.S =", eta.S, "; weight =", logitToProb(weight), "; r =", r.eval, "; s =", s.eval))
+      
+      neg.log.lik = r.eval + s.eval
+      neg.log.lik + abs(weight)
     }
     noToM.fit <- summary(mle(noToM.LL,
                              start=list(alph=rnorm(1, 1, 0.2),
                                         eta.S=rnorm(1, 0, 1),
-                                        eta.R=rnorm(1, 0, 1)),
+                                        eta.R=rnorm(1, 0, 1),
+                                        weight=rnorm(1, 0, 1)),
                              method = "BFGS"))
     noToM.fit
   },
@@ -101,23 +105,24 @@ modelsEval = list(
   # # # # # # # # # # #
   recurseToM = function(){
     print("recursive ToM")
-    recurseToM.LL <- function(alph, eta.S, eta.R, lambda){
+    recurseToM.LL <- function(alph, eta.S, eta.R, lambda, weight){
       ns.l = array(humanLieCounts, dim=c(11,11,6))
       ns.T = humanDetectCounts.T
       ns.F = humanDetectCounts.F
 
-      recurseToM.mat <- recurseToM.pred(alph, eta.S, eta.R, lambda)
+      recurseToM.mat <- recurseToM.pred(alph, eta.S, eta.R, lambda, weight)
       r.eval = -eval.r(recurseToM.mat[[1]], ns.T, ns.F)
       s.eval = -eval.s(recurseToM.mat[[2]], ns.l)
-      print(paste("alph =", alph, "; lambda =", lambda, "; r =", r.eval, "; s =", s.eval))
-      neg.log.lik =  r.eval + s.eval
-      neg.log.lik
+      print(paste("alph =", alph, "; weight =", logitToProb(weight), "; lambda =", lambda, "; r =", r.eval, "; s =", s.eval))
+      neg.log.lik = r.eval + s.eval
+      neg.log.lik + abs(weight)
     }
     recurseToM.fit <- summary(mle(recurseToM.LL,
                                   start=list(alph=rnorm(1, 1, 0.2),
                                              eta.S=rnorm(1, 0, 1),
                                              eta.R=rnorm(1, 0, 1),
-                                             lambda=rnorm(1, 0, 1)),
+                                             lambda=rnorm(1, 0, 1),
+                                             weight=rnorm(1, 0, 1)),
                                   method = "BFGS"))
     recurseToM.fit
   },
@@ -253,17 +258,9 @@ modelsEval = list(
 
 # no ToM
 load("noToMfit.Rdata")
-# start_time <- Sys.time()
-# for(i in 0:50){
-#   tryCatch({
-#     noToMeval = modelsEval$noToM()
-#     break
-#   },
-#   error = function(e){
-#     print("try again")
-#   })
-# }
-# print(Sys.time() - start_time)
+start_time <- Sys.time()
+noToMeval = modelsEval$noToM()
+print(Sys.time() - start_time)
 # save(noToMeval, file="noToMfit.Rdata")
 
 noToMeval.s <- -2*eval.s(
@@ -288,14 +285,15 @@ noToMeval.r <- -2*eval.r(
 
 # recursive ToM
 load("recurseToMfit.Rdata")
-recurseToMeval = modelsEval$recurseToM()
+# recurseToMeval = modelsEval$recurseToM()
 #save(recurseToMeval, file="recurseToMfit.Rdata")
 recurseToMeval.s <- -2*eval.s(
   recurseToM.pred(
     recurseToMeval@coef['alph','Estimate'],
     recurseToMeval@coef['eta.S','Estimate'],
     recurseToMeval@coef['eta.R','Estimate'],
-    recurseToMeval@coef['lambda','Estimate'])[[2]],
+    recurseToMeval@coef['lambda','Estimate'],
+    recurseToMeval@coef['weight','Estimate'])[[2]],
   array(humanLieCounts, dim=c(11,11,6))
 )
 recurseToMeval.r <- -2*eval.r(
@@ -303,11 +301,11 @@ recurseToMeval.r <- -2*eval.r(
     recurseToMeval@coef['alph','Estimate'],
     recurseToMeval@coef['eta.S','Estimate'],
     recurseToMeval@coef['eta.R','Estimate'],
-    recurseToMeval@coef['lambda','Estimate'])[[1]],
+    recurseToMeval@coef['lambda','Estimate'],
+    recurseToMeval@coef['weight','Estimate'])[[1]],
   humanDetectCounts.T, 
   humanDetectCounts.F
 )
-
 
 
 # recursive ToM broken down by condition
@@ -443,7 +441,8 @@ liesTruthEval = list(
         array(
           noToM.s.pred(
             noToMeval@coef['alph','Estimate'], 
-            noToMeval@coef['eta.S','Estimate']),
+            noToMeval@coef['eta.S','Estimate'],
+            noToMeval@coef['weight','Estimate']),
           dim=c(11,11,6))
       ), 
       getDiag(
@@ -457,7 +456,8 @@ liesTruthEval = list(
         array(
           noToM.s.pred(
             noToMeval@coef['alph','Estimate'], 
-            noToMeval@coef['eta.S','Estimate']),
+            noToMeval@coef['eta.S','Estimate'],
+            noToMeval@coef['weight','Estimate']),
           dim=c(11,11,6))
       ), 
       getLies(
@@ -477,7 +477,8 @@ liesTruthEval = list(
           recurseToMeval@coef['alph','Estimate'],
           recurseToMeval@coef['eta.S','Estimate'],
           recurseToMeval@coef['eta.R','Estimate'],
-          recurseToMeval@coef['lambda','Estimate'])[[2]]
+          recurseToMeval@coef['lambda','Estimate'],
+          recurseToMeval@coef['weight','Estimate'])[[2]]
       ),
       getDiag(
         array(
@@ -491,7 +492,8 @@ liesTruthEval = list(
           recurseToMeval@coef['alph','Estimate'],
           recurseToMeval@coef['eta.S','Estimate'],
           recurseToMeval@coef['eta.R','Estimate'],
-          recurseToMeval@coef['lambda','Estimate'])[[2]]
+          recurseToMeval@coef['lambda','Estimate'],
+          recurseToMeval@coef['weight','Estimate'])[[2]]
       ),
       getLies(
         array(

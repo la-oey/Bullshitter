@@ -1,4 +1,4 @@
-setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/model/lauren/mleFits/")
+#setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/model/lauren/mleFits/")
 
 # Load packages
 library(shiny)
@@ -17,7 +17,8 @@ ui <- fluidPage(theme = shinytheme("lumen"),
                   column(width = 4, 
                          wellPanel(
                            sliderInput('alpha', HTML("&alpha;"), value = 0.15, min = 0, max = 1, step=0.05),
-                           sliderInput('eta', HTML("&eta;<sub>S</sub>"), value = 10, min = -5, max = 25),
+                           sliderInput('eta', HTML("&eta;<sub>S</sub>"), value = 9, min = -5, max = 25),
+                           sliderInput('weight', HTML("lapse rate"), value = 0.9, min = 0, max = 1, step=0.05),
                            numericInput('lambda', HTML("levels of recursion"), 7, min = 1, max = 15)
                          )
                   ),
@@ -52,7 +53,8 @@ server <- function(input, output) {
       input$alpha,
       input$eta,
       recurseToMeval@coef['eta.R','Estimate'],
-      log(input$lambda))[[2]]
+      log(input$lambda),
+      probToLogit(input$weight))[[2]]
   })
   
   # Create tile plot
@@ -84,25 +86,18 @@ server <- function(input, output) {
   })
   
   eval <- reactive({
+    dat = dat()
+    humans = array(
+      humanLieCounts, 
+      dim=c(11,11,6))
+    
     recurseToMeval.s.diag = -2*eval.s(
-      getDiag(
-        dat()
-      ),
-      getDiag(
-        array(
-          humanLieCounts, 
-          dim=c(11,11,6))
-      )
+      getDiag(dat),
+      getDiag(humans)
     )
     recurseToMeval.s.lies = -2*eval.s(
-      getLies(
-        dat()
-      ),
-      getLies(
-        array(
-          humanLieCounts, 
-          dim=c(11,11,6))
-      )
+      getLies(dat),
+      getLies(humans)
     )
     return(list(recurseToMeval.s.diag, recurseToMeval.s.lies))
   })

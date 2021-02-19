@@ -5,8 +5,10 @@ library(tidyverse)
 
 
 
-noToM.s.pred <- function(alph, eta.S){
-  mapply(function(i, j){p.L_ksay.k.r(j, alph, eta.S, i, lastlvl=TRUE, rep(0.5,11))}, rep(c(0.2,0.5,0.8), 2), rep(c(1,-1), each=3))
+noToM.s.pred <- function(alph, eta.S, weight){
+  weight = logitToProb(pmin(10, pmax(-10, weight)))
+  pred = mapply(function(i, j){p.L_ksay.k.r(j, alph, eta.S, i, lastlvl=TRUE, rep(0.5,11))}, rep(c(0.2,0.5,0.8), 2), rep(c(1,-1), each=3))
+  weight*pred + (1-weight)*(1/11)
 }
 
 p_t.ksay.r_p.L <- function(p, p.L) { #probability of not telling the truth
@@ -33,6 +35,7 @@ nullVec <- function(br, kstar){
 
 
 noToM.r.pred <- function(alph, eta.R){
+  #alph = logitToProb(pmin(10, pmax(-10, alph)))
   matrix(
     mapply(
       function(i,j,k) p.D_bs.ksay.r(i, j, k, alph, eta.R, lastlvl=TRUE, nullVec(j, i)), 

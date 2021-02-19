@@ -69,26 +69,28 @@ recurseToM.matrix <- function(alph, eta.S, eta.R, util, p, lambda){
   # [[2]] sender P(k* | k)
 }
 
-recurseToM.weighted <- function(alph, eta.S, eta.R, util, p, lambda){
+recurseToM.weighted <- function(alph, eta.S, eta.R, util, p, lambda, weight){
   matrices <- recurseToM.matrix(alph, eta.S, eta.R, util, p, lambda)
   n.depths = dim(matrices[[1]])[2] # should be equal to dim(matrices[[2]])[3]
   weightedR <- poissonAverage(matrices[[1]], lambda)
-  weightedS <- poissonAverage(matrices[[2]], lambda)
+  weightedS <- weight*poissonAverage(matrices[[2]], lambda) + (1-weight)*(1/11) # lapse rate
   return(list(weightedR, weightedS))
 }
 
-recurseToM.pred <- function(alph, eta.S, eta.R, lambda){
-  lambda = pmax(pmin(exp(lambda), 35),0.1)
+recurseToM.pred <- function(alph, eta.S, eta.R, lambda, weight){
+  weight = logitToProb(pmin(10, pmax(-10, weight)))
+  lambda = pmax(pmin(exp(lambda), 15),0.1)
   store.ksay.k.full = array(NA, dim = c(11, 11, 6))
   store.bs.ksay.full = array(NA, dim = c(11, 6))
   utils = c(1,-1)
   ps = c(0.2, 0.5, 0.8)
   for(u in 1:length(utils)){
     for(p in 1:length(ps)){
-      matr <- recurseToM.weighted(alph, eta.S, eta.R, utils[u], ps[p], lambda)
+      matr <- recurseToM.weighted(alph, eta.S, eta.R, utils[u], ps[p], lambda, weight)
       store.bs.ksay.full[,(u-1)*length(ps)+p] <- matr[[1]]
       store.ksay.k.full[,,(u-1)*length(ps)+p] <- matr[[2]]
     }
   }
   return(list(store.bs.ksay.full, store.ksay.k.full))
 }
+

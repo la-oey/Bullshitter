@@ -88,9 +88,8 @@ origModelPred <- recurseToM.pred(
   recurseToMeval@coef['alph','Estimate'],
   recurseToMeval@coef['eta.S','Estimate'],
   recurseToMeval@coef['eta.R','Estimate'],
-  recurseToMeval@coef['lambda','Estimate'])[[2]] 
-
-asTibble(origModelPred)
+  recurseToMeval@coef['lambda','Estimate'],
+  recurseToMeval@coef['weight','Estimate'])[[2]] 
 
 
 origModel.diag = -2*eval.s(
