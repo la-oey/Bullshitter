@@ -73,13 +73,18 @@ recurseToM.weighted <- function(alph, eta.S, eta.R, util, p, lambda, weight){
   matrices <- recurseToM.matrix(alph, eta.S, eta.R, util, p, lambda)
   n.depths = dim(matrices[[1]])[2] # should be equal to dim(matrices[[2]])[3]
   weightedR <- poissonAverage(matrices[[1]], lambda)
-  weightedS <- weight*poissonAverage(matrices[[2]], lambda) + (1-weight)*(1/11) # lapse rate
+  predS <- poissonAverage(matrices[[2]], lambda)
+  dims <- dim(predS)[1]
+  offDiag <- (1-diag(dims))*predS
+  weightedOffDiag <- (1-diag(dims))*(weight*offDiag + (1-weight)*1/10)
+  onDiag <- diag(dims)*predS
+  weightedS <- sweep(weightedOffDiag,2, (1-diag(onDiag))/colSums(weightedOffDiag),`*`) + onDiag # lapse rate on lies only
   return(list(weightedR, weightedS))
 }
 
 recurseToM.pred <- function(alph, eta.S, eta.R, lambda, weight){
-  weight = logitToProb(pmin(10, pmax(-10, weight)))
-  lambda = pmax(pmin(exp(lambda), 15),0.1)
+  weight = logitToProb(pmin(8, pmax(-8, weight)))
+  lambda = pmax(pmin(exp(lambda), 12),0.1)
   store.ksay.k.full = array(NA, dim = c(11, 11, 6))
   store.bs.ksay.full = array(NA, dim = c(11, 6))
   utils = c(1,-1)

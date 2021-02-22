@@ -1,4 +1,3 @@
-#setwd("/Users/loey/Desktop/Research/FakeNews/Bullshitter/model/lauren/mleFits/")
 
 # Load packages
 library(shiny)

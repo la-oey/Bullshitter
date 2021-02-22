@@ -79,7 +79,7 @@ modelsEval = list(
   noToM = function(){
     print("no ToM")
     noToM.LL <- function(alph, eta.S, eta.R, weight){
-      ns.l = humanLieCounts
+      ns.l = array(humanLieCounts, dim=c(11,11,6))
       ns.T = humanDetectCounts.T
       ns.F = humanDetectCounts.F
       noToM.mat <- list(noToM.s.pred(alph, eta.S, weight), noToM.r.pred(alph, eta.R))
@@ -89,7 +89,7 @@ modelsEval = list(
       print(paste("alph =", alph, "; eta.S =", eta.S, "; weight =", logitToProb(weight), "; r =", r.eval, "; s =", s.eval))
       
       neg.log.lik = r.eval + s.eval
-      neg.log.lik + abs(weight)
+      neg.log.lik + weight^2
     }
     noToM.fit <- summary(mle(noToM.LL,
                              start=list(alph=rnorm(1, 1, 0.2),
@@ -115,7 +115,7 @@ modelsEval = list(
       s.eval = -eval.s(recurseToM.mat[[2]], ns.l)
       print(paste("alph =", alph, "; weight =", logitToProb(weight), "; lambda =", lambda, "; r =", r.eval, "; s =", s.eval))
       neg.log.lik = r.eval + s.eval
-      neg.log.lik + abs(weight)
+      neg.log.lik + weight^4 + lambda^4
     }
     recurseToM.fit <- summary(mle(recurseToM.LL,
                                   start=list(alph=rnorm(1, 1, 0.2),
@@ -266,8 +266,9 @@ print(Sys.time() - start_time)
 noToMeval.s <- -2*eval.s(
   noToM.s.pred(
     noToMeval@coef['alph','Estimate'], 
-    noToMeval@coef['eta.S','Estimate']), 
-  humanLieCounts
+    noToMeval@coef['eta.S','Estimate'],
+    noToMeval@coef['weight','Estimate']), 
+  array(humanLieCounts, dim=c(11,11,6))
 )
 noToMeval.r <- -2*eval.r(
   noToM.r.pred(
@@ -282,10 +283,11 @@ noToMeval.r <- -2*eval.r(
 
 
 
-
 # recursive ToM
 load("recurseToMfit.Rdata")
-# recurseToMeval = modelsEval$recurseToM()
+start_time <- Sys.time()
+recurseToMeval = modelsEval$recurseToM()
+print(Sys.time() - start_time)
 #save(recurseToMeval, file="recurseToMfit.Rdata")
 recurseToMeval.s <- -2*eval.s(
   recurseToM.pred(
