@@ -71,7 +71,8 @@ eval.r <- function(matr, ns.T, ns.F){ #ns = 11 x 6 matrix of counts for all cond
 }
 
 
-
+st = 1
+end = 6
 modelsEval = list(
   # # # # # # # #
   # # no ToM # #
@@ -84,12 +85,12 @@ modelsEval = list(
       ns.F = humanDetectCounts.F
       noToM.mat <- list(noToM.s.pred(alph, eta.S, weight), noToM.r.pred(alph, eta.R))
   
-      s.eval = -eval.s(noToM.mat[[1]], ns.l)
-      r.eval = -eval.r(noToM.mat[[2]], ns.T, ns.F)
+      s.eval = -eval.s(noToM.mat[[1]][,,st:end], ns.l[,,st:end])
+      r.eval = -eval.r(noToM.mat[[2]][,st:end], ns.T[,st:end], ns.F[,st:end])
       print(paste("alph =", alph, "; eta.S =", eta.S, "; weight =", logitToProb(weight), "; r =", r.eval, "; s =", s.eval))
       
       neg.log.lik = r.eval + s.eval
-      neg.log.lik + weight^2
+      neg.log.lik + abs(weight)
     }
     noToM.fit <- summary(mle(noToM.LL,
                              start=list(alph=rnorm(1, 1, 0.2),
@@ -111,11 +112,11 @@ modelsEval = list(
       ns.F = humanDetectCounts.F
 
       recurseToM.mat <- recurseToM.pred(alph, eta.S, eta.R, lambda, weight)
-      r.eval = -eval.r(recurseToM.mat[[1]], ns.T, ns.F)
-      s.eval = -eval.s(recurseToM.mat[[2]], ns.l)
+      r.eval = -eval.r(recurseToM.mat[[1]][,st:end], ns.T[,st:end], ns.F[,st:end])
+      s.eval = -eval.s(recurseToM.mat[[2]][,,st:end], ns.l[,,st:end])
       print(paste("alph =", alph, "; weight =", logitToProb(weight), "; lambda =", lambda, "; r =", r.eval, "; s =", s.eval))
       neg.log.lik = r.eval + s.eval
-      neg.log.lik + weight^4 + lambda^4
+      neg.log.lik + abs(weight) #weight^2?
     }
     recurseToM.fit <- summary(mle(recurseToM.LL,
                                   start=list(alph=rnorm(1, 1, 0.2),
@@ -135,8 +136,8 @@ modelsEval = list(
     everybodyLies.LL <- function(lambda, weight){
       ns.l = humanLieCounts
       -eval.s(
-        everybodyLies.pred(lambda, weight),
-        ns.l
+        everybodyLies.pred(lambda, weight)[,st:end],
+        ns.l[,st:end]
       )
     }
     everybodyLies.fit <- summary(mle(everybodyLies.LL,
@@ -154,8 +155,8 @@ modelsEval = list(
     someLies.LL <- function(pTrue, lambda, weight){
       ns.l = humanLieCounts
       -eval.s(
-        someLies.pred(pTrue, lambda, weight),
-        ns.l
+        someLies.pred(pTrue, lambda, weight)[,st:end],
+        ns.l[,st:end]
       )
     }
     someLies.fit <- summary(mle(someLies.LL,
@@ -174,8 +175,8 @@ modelsEval = list(
     alwaysTruth.LL <- function(pTrue){
       ns.l = humanLieCounts
       -eval.s(
-        alwaysTruth.pred(pTrue),
-        ns.l
+        alwaysTruth.pred(pTrue)[,st:end],
+        ns.l[,st:end]
       )
     }
     alwaysTruth.fit <- summary(mle(alwaysTruth.LL,
@@ -194,9 +195,9 @@ modelsEval = list(
       ns.F = humanDetectCounts.F
 
       -eval.r(
-        signifTesting.pred(a, b),
-        ns.T,
-        ns.F
+        signifTesting.pred(a, b)[,st:end],
+        ns.T[,st:end],
+        ns.F[,st:end]
       )
     }
     signifTesting.fit <- summary(mle(signifTesting.LL,
@@ -215,8 +216,8 @@ modelsEval = list(
       ns.l = humanLieCounts
       
       -eval.s(
-        randomSender.pred(),
-        ns.l
+        randomSender.pred()[,st:end],
+        ns.l[,st:end]
       )
     }
     randomSender.fit <- randomSender.LL()
@@ -233,9 +234,9 @@ modelsEval = list(
       ns.F = humanDetectCounts.F
       
       -eval.r(
-        randomReceiver.pred(),
-        ns.T,
-        ns.F
+        randomReceiver.pred()[,st:end],
+        ns.T[,st:end],
+        ns.F[,st:end]
       )
     }
     randomReceiver.fit <- randomReceiver.LL()
@@ -257,26 +258,31 @@ modelsEval = list(
 # ///////////////////////////////
 
 # no ToM
-load("noToMfit.Rdata")
+load("Rdata/noToMfit.Rdata")
 start_time <- Sys.time()
 noToMeval = modelsEval$noToM()
 print(Sys.time() - start_time)
 # save(noToMeval, file="noToMfit.Rdata")
 
 noToMeval.s <- -2*eval.s(
-  noToM.s.pred(
-    noToMeval@coef['alph','Estimate'], 
-    noToMeval@coef['eta.S','Estimate'],
-    noToMeval@coef['weight','Estimate']), 
-  array(humanLieCounts, dim=c(11,11,6))
+  array(
+    noToM.s.pred(
+      noToMeval@coef['alph','Estimate'], 
+      noToMeval@coef['eta.S','Estimate'],
+      noToMeval@coef['weight','Estimate']),
+    dim=c(11,11,6))[,,st:end], 
+  array(
+    humanLieCounts, 
+    dim=c(11,11,6))[,,st:end]
 )
 noToMeval.r <- -2*eval.r(
   noToM.r.pred(
     noToMeval@coef['alph','Estimate'], 
-    noToMeval@coef['eta.R','Estimate']), 
-  humanDetectCounts.T, 
-  humanDetectCounts.F
+    noToMeval@coef['eta.R','Estimate'])[,st:end], 
+  humanDetectCounts.T[,st:end], 
+  humanDetectCounts.F[,st:end]
 )
+
 
 
 
@@ -284,19 +290,26 @@ noToMeval.r <- -2*eval.r(
 
 
 # recursive ToM
-load("recurseToMfit.Rdata")
 start_time <- Sys.time()
-recurseToMeval = modelsEval$recurseToM()
+for(i in 1:50){
+  tryCatch({
+    recurseToMeval = modelsEval$recurseToM()
+    break
+  }, error = function(e){
+    message(e)
+  })
+}
 print(Sys.time() - start_time)
-#save(recurseToMeval, file="recurseToMfit.Rdata")
+# save(recurseToMeval, file="Rdata/recurseToMfit.Rdata")
+
 recurseToMeval.s <- -2*eval.s(
   recurseToM.pred(
     recurseToMeval@coef['alph','Estimate'],
     recurseToMeval@coef['eta.S','Estimate'],
     recurseToMeval@coef['eta.R','Estimate'],
     recurseToMeval@coef['lambda','Estimate'],
-    recurseToMeval@coef['weight','Estimate'])[[2]],
-  array(humanLieCounts, dim=c(11,11,6))
+    recurseToMeval@coef['weight','Estimate'])[[2]][,,st:end],
+  array(humanLieCounts, dim=c(11,11,6))[,,st:end]
 )
 recurseToMeval.r <- -2*eval.r(
   recurseToM.pred(
@@ -304,94 +317,45 @@ recurseToMeval.r <- -2*eval.r(
     recurseToMeval@coef['eta.S','Estimate'],
     recurseToMeval@coef['eta.R','Estimate'],
     recurseToMeval@coef['lambda','Estimate'],
-    recurseToMeval@coef['weight','Estimate'])[[1]],
-  humanDetectCounts.T, 
-  humanDetectCounts.F
+    recurseToMeval@coef['weight','Estimate'])[[1]][,st:end],
+  humanDetectCounts.T[,st:end], 
+  humanDetectCounts.F[,st:end]
 )
 
-
-# recursive ToM broken down by condition
-
-preds <- recurseToM.pred(
-  recurseToMeval@coef['alph','Estimate'],
-  recurseToMeval@coef['eta.S','Estimate'],
-  recurseToMeval@coef['eta.R','Estimate'],
-  recurseToMeval@coef['lambda','Estimate'])
-predsS <- preds[[2]]
-trueS <- array(humanLieCounts, dim=c(11,11,6))
-predsR <- preds[[1]]
-for(i in 1:6){
-  print(
-    -2*eval.s(
-      predsS[,,i],
-      trueS[,,i]
-    )
-  )
-}
-for(i in 1:6){
-  print(
-    -2*eval.r(
-      predsR[,i],
-      humanDetectCounts.T[,i], 
-      humanDetectCounts.F[,i]
-    )
-  )
-}
+# # recursive ToM broken down by condition
 
 
-
-
-
-
-
-
-# recursive ToM (2 alphas)
-# load("recurseToMfit_alphas.Rdata")
-# recurseToMeval2.s <- -2*eval.s(
-#   recurseToM.pred2(
-#     recurseToMeval2@coef['alph.S','Estimate'],
-#     recurseToMeval2@coef['alph.R','Estimate'],
-#     recurseToMeval2@coef['eta.S','Estimate'],
-#     recurseToMeval2@coef['eta.R','Estimate'],
-#     recurseToMeval2@coef['lambda','Estimate'])[[2]],
-#   array(humanLieCounts, dim=c(11,11,6))
-# )
-# recurseToMeval2.r <- -2*eval.r(
-#   recurseToM.pred2(
-#     recurseToMeval2@coef['alph.S','Estimate'],
-#     recurseToMeval2@coef['alph.R','Estimate'],
-#     recurseToMeval2@coef['eta.S','Estimate'],
-#     recurseToMeval2@coef['eta.R','Estimate'],
-#     recurseToMeval2@coef['lambda','Estimate'])[[1]],
-#   humanDetectCounts.T, 
-#   humanDetectCounts.F
-# )
+# sts = c(1:6,1,4)
+# ends = c(1:6,3,6)
 # 
-# preds2 <- recurseToM.pred2(
-#   recurseToMeval2@coef['alph.S','Estimate'],
-#   recurseToMeval2@coef['alph.R','Estimate'],
-#   recurseToMeval2@coef['eta.S','Estimate'],
-#   recurseToMeval2@coef['eta.R','Estimate'],
-#   recurseToMeval2@coef['lambda','Estimate'])
-# predsS2 <- preds2[[2]]
-# predsR2 <- preds2[[1]]
-# for(i in 1:6){
-#   print(
-#     -2*eval.s(
-#       predsS2[,,i],
-#       trueS[,,i]
-#     )
+# for(i in 1:length(sts)){
+#   st = sts[i]
+#   end = ends[i]
+#   start_time <- Sys.time()
+#   for(i in 1:50){
+#     tryCatch({
+#       recurseToMeval.subset = modelsEval$recurseToM()
+#       break
+#     }, error = function(e){
+#       message(e)
+#     })
+#   }
+#   print(Sys.time() - start_time)
+#   fileUtil = ifelse(st <= 3, "red", "blue")
+#   fileP = case_when(
+#     st == end & st %% 3 == 1 ~ "0.2",
+#     st == end & st %% 3 == 2 ~ "0.5",
+#     st == end & st %% 3 == 0 ~ "0.8",
+#     TRUE ~ "NA"
 #   )
+#   filename = paste0("Rdata/recurseToMfit_", fileUtil, fileP, ".Rdata")
+#   save(recurseToMeval.subset, file=filename)
 # }
-# for(i in 1:6){
-#   print(
-#     -2*eval.r(
-#       predsR2[,i],
-#       humanDetectCounts.T[,i], 
-#       humanDetectCounts.F[,i]
-#     )
-#   )
-# }
+
+
+
+
+
 
 
 
@@ -431,6 +395,7 @@ randomReceiverEval = modelsEval$randomReceiver()
 
 
 
+
 # Examine Truth vs Lies
 
 
@@ -445,12 +410,12 @@ liesTruthEval = list(
             noToMeval@coef['alph','Estimate'], 
             noToMeval@coef['eta.S','Estimate'],
             noToMeval@coef['weight','Estimate']),
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       ), 
       getDiag(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     noToMeval.s.lies <- -2*eval.s(
@@ -460,12 +425,12 @@ liesTruthEval = list(
             noToMeval@coef['alph','Estimate'], 
             noToMeval@coef['eta.S','Estimate'],
             noToMeval@coef['weight','Estimate']),
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       ), 
       getLies(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     return(list(noToMeval.s.diag, noToMeval.s.lies))
@@ -480,12 +445,12 @@ liesTruthEval = list(
           recurseToMeval@coef['eta.S','Estimate'],
           recurseToMeval@coef['eta.R','Estimate'],
           recurseToMeval@coef['lambda','Estimate'],
-          recurseToMeval@coef['weight','Estimate'])[[2]]
+          recurseToMeval@coef['weight','Estimate'])[[2]][,,st:end]
       ),
       getDiag(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     recurseToMeval.s.lies = -2*eval.s(
@@ -495,12 +460,12 @@ liesTruthEval = list(
           recurseToMeval@coef['eta.S','Estimate'],
           recurseToMeval@coef['eta.R','Estimate'],
           recurseToMeval@coef['lambda','Estimate'],
-          recurseToMeval@coef['weight','Estimate'])[[2]]
+          recurseToMeval@coef['weight','Estimate'])[[2]][,,st:end]
       ),
       getLies(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     return(list(recurseToMeval.s.diag, recurseToMeval.s.lies))
@@ -516,12 +481,12 @@ liesTruthEval = list(
             everybodyLiesEval@coef['weight','Estimate']
           ),
           dim=c(11,11,6)
-        )
+        )[,,st:end]
       ),
       getDiag(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     everybodyLiesEval.s.lies = -2*eval.s(
@@ -532,12 +497,12 @@ liesTruthEval = list(
             everybodyLiesEval@coef['weight','Estimate']
           ),
           dim=c(11,11,6)
-        )
+        )[,,st:end]
       ),
       getLies(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     return(list(everybodyLiesEval.s.diag, everybodyLiesEval.s.lies))
@@ -554,12 +519,12 @@ liesTruthEval = list(
             somePeopleLieEval@coef['weight','Estimate']
           ),
           dim=c(11,11,6)
-        )
+        )[,,st:end]
       ),
       getDiag(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     somePeopleLieEval.s.lies = -2*eval.s(
@@ -571,12 +536,12 @@ liesTruthEval = list(
             somePeopleLieEval@coef['weight','Estimate']
           ),
           dim=c(11,11,6)
-        )
+        )[,,st:end]
       ),
       getLies(
         array(
           humanLieCounts, 
-          dim=c(11,11,6))
+          dim=c(11,11,6))[,,st:end]
       )
     )
     return(list(somePeopleLieEval.s.diag, somePeopleLieEval.s.lies))
